@@ -8,5 +8,4 @@ pinned: false
 short_description: Reachy Mini Korean booth host
 tags:
  - reachy_mini
- - reachy_mini_python_app
 ---
