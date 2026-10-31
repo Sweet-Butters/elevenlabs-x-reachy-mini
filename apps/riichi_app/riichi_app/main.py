@@ -310,7 +310,7 @@ class RiichiApp(ReachyMiniApp):
             with urlopen(request, timeout=3):
                 pass
         elif action == "test":
-            self.speaker.say("안녕하세요! 리치가 잘 들리나요?")
+            self.speaker.say("Hi! I'm Reachy. Can you hear me? 안녕하세요, 리치 목소리 들리세요?")
         elif action == "transcript":
             self._transcript(value)
         elif action == "error":

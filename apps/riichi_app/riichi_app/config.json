@@ -1,17 +1,13 @@
 {
-  "agent_id": "agent_9101m65rk0eqe2ytcq56ceg7hw10",
+  "agent_id": "agent_9101m69gkj8pewyt1vtpvs3yrf45",
   "voice_id": "vJ170fCwESgE1tjW39So",
-  "language": "ko",
+  "language": "en",
   "stt_language": "auto",
   "greetings": [
-    "어서 오세요! 저는 리치예요. Hello World AI 해커톤에 오신 걸 환영해요!",
-    "반가워요! 먼저 명찰을 받고 편한 자리에 앉아 주세요.",
-    "어서 오세요! 한 시 십오 분에 오프닝이 시작돼요.",
-    "안녕하세요! 와이파이와 세팅은 운영진이 안내해 드릴게요.",
-    "잘 오셨어요! 명찰을 받고 자리를 잡으면 오늘 만들 준비 끝이에요.",
-    "반가워요! 오늘은 혼자 만드는 개인전이에요. 멋진 하루 보내요!",
-    "어서 오세요! 궁금한 게 있거나 세팅이 막히면 운영진에게 말씀해 주세요.",
-    "Hello World AI 해커톤에 오신 걸 환영해요! 저는 입구에서 인사하는 리치예요."
+    "Hi! I'm Reachy. Want to smell a forest? Pick a scent for your postcard! 안녕하세요, 리치예요. 향을 맡아 보세요!",
+    "Welcome to TripPups! Try hinoki cypress, pine, or moss for free. 트립펍스에서 무료로 시향해 보세요!",
+    "Hello from Reachy! Choose a forest scent and take it home on a postcard. 안녕하세요! 엽서에 담을 숲 향을 골라 보세요!",
+    "Hi there! Curious about our scent postcards? Come sniff the forest. 향기 엽서를 구경하고 시향해 보세요!"
   ],
   "detection_fps": 2,
   "fallback_greeting_seconds": 90,
