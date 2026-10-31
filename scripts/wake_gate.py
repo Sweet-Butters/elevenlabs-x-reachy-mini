@@ -2,7 +2,7 @@
 import re
 import time
 
-WAKE = re.compile(r"^(?:hey[ ,!]*|헤이\s*)?(?:리\s*치|리찌|리\s*치아|reachy|reachie|richie)(?:\s*야)?(?=$|[\s,!?，。.!?])", re.I)
+WAKE = re.compile(r"^(?:hey[ ,!.]*|헤이[\s,!.]*)?(?:리\s*치|리찌|리\s*치아|리취|빌리지|빌리치|리지|니치|reachy|reachie|richie|ritchie|richi)(?:\s*야)?(?=$|[\s,!?，。.!?])", re.I)
 
 
 def split_wake(text):
