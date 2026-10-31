@@ -342,7 +342,7 @@ class RiichiApp(ReachyMiniApp):
             reachy_mini.enable_motors()
             reachy_mini.wake_up()
         except Exception as exc:
-            self._error(f"모터 깨우기 실패: {exc}")
+            self.errors.put(f"모터 깨우기 실패: {exc}")
         self.motion = EmotionMotion(reachy_mini, self.errors)
         self.motion.start()
         self.speaker = Speaker(reachy_mini, self.config, self.errors, before_say=self.motion.pause)
