@@ -5,14 +5,22 @@ import time
 WAKE = re.compile(r"^(?:hey[ ,!.]*|헤이[\s,!.]*)?(?:리\s*치|리찌|리\s*치아|리취|빌리지|빌리치|리지|니치|reachy|reachie|richie|ritchie|richi)(?:\s*야)?(?=$|[\s,!?，。.!?])", re.I)
 
 
+NAME_ANYWHERE = re.compile(r"(?:^|[\s,!?.])((?:hey[ ,!.]*|헤이[\s,!.]*)?(?:리\s*치|리찌|리취|빌리지|빌리치|reachy|reachie|richie|ritchie)(?:\s*(?:야|아))?)(?=$|[\s,!?，。.!?])", re.I)
+
+
 def split_wake(text):
     # Only a greeting or filler may precede the name. Avoid matching names in quoted speech.
-    leading = re.match(r"^\s*(?:(?:저기요?|안녕하세요|안녕|있잖아|음|hello|hi)[,!\s]+)?", text, re.I)
+    leading = re.match(r"^\s*(?:(?:저기요?|안녕하세요|안녕|있잖아|음|어|아|hello|hi)[,!.\s]+)?", text, re.I)
     start = leading.end()
     match = WAKE.match(text[start:])
+    if match:
+        return text[start + match.end():].strip(" \t,，.!?。")
+    # 현장에서는 이름 앞에 다른 말이 섞여 받아써지는 경우가 많아, 문장 안 어디든 이름이 있으면 부른 것으로 본다
+    match = NAME_ANYWHERE.search(text)
     if not match:
         return None
-    return text[start + match.end():].strip(" \t,，.!?。")
+    rest = (text[:match.start(1)] + " " + text[match.end(1):]).strip(" \t,，.!?。")
+    return rest
 
 
 class WakeGate:
