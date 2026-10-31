@@ -58,7 +58,7 @@ def main():
     client = ElevenLabs(api_key=api_key())
     version = client.conversational_ai.agents.get(agent_id).version_id
     lines = ["# TripPups booth agent — live text-only conversations",
-             "", f"Agent: `{agent_id}`  ", f"Main version: `{version}`  ",
+             "", f"Agent: `{agent_id}`", f"Main version: `{version}`",
              "Method: ElevenAgents authenticated WebSocket, text-only override; one fresh session per question. English sessions use `en`, Korean uses `ko`.", ""]
     passed = 0
     for i, (question, language, expected) in enumerate(CASES, 1):
@@ -74,8 +74,8 @@ def main():
         except Exception as exc:
             greeting, answer, status = "(session failed)", f"ERROR: {type(exc).__name__}: {exc}", "FAIL"
         print(f"{i}/5 {status}: {question} => {answer}", flush=True)
-        lines += [f"## {i}. {question}", "", f"Greeting: {greeting}  ",
-                  f"Visitor: {question}  ", f"Reachy: {answer}  ", f"Result: {status}", ""]
+        lines += [f"## {i}. {question}", "", f"- Greeting: {greeting}",
+                  f"- Visitor: {question}", f"- Reachy: {answer}", f"- Result: {status}", ""]
     lines += [f"Summary: {passed}/5 passed.", ""]
     RESULTS.write_text("\n".join(lines), encoding="utf-8")
     if passed != 5:
