@@ -1,0 +1,6 @@
+elevenlabs[pyaudio]>=2.0,<3.0
+opencv-python>=4.10,<5
+numpy>=2,<3
+onnxruntime>=1.23,<2
+reachy-mini>=1.0,<2
+miniaudio>=1.71,<2

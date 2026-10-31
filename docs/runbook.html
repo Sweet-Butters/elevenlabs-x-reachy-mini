@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>리치 현장 진행표 · Hello World AI 해커톤</title>
+  <style>
+    :root{color-scheme:light dark;--bg:#fff;--ink:#14213a;--muted:#46546a;--panel:#f2f5f9;--rule:#bdc9d7;--accent:#064fb3}
+    @media(prefers-color-scheme:dark){:root{--bg:#101722;--ink:#f2f5fa;--muted:#c9d4e2;--panel:#1b293a;--rule:#52647a;--accent:#a5ceff}}
+    *{box-sizing:border-box}html{background:var(--bg);color:var(--ink)}body{font:15px/1.34 system-ui,-apple-system,"Malgun Gothic",sans-serif;max-width:900px;margin:auto;padding:16px}h1{font-size:1.4rem;line-height:1.18;margin:0 0 4px}h2{font-size:1.18rem;margin:0 0 8px;padding:4px 0 8px;border-bottom:2px solid var(--accent)}p{margin:4px 0}header{border-bottom:3px solid var(--accent);padding-bottom:8px;margin-bottom:12px}.sub{color:var(--muted);font-weight:650}.grid{display:grid;gap:11px}.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px;min-width:0}.card.wide{grid-column:1/-1}ul,ol{margin:5px 0;padding-left:1.45em}li{margin:3px 0}code,kbd{font:600 .89em ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}code{color:var(--accent)}kbd{display:inline-block;border:1px solid var(--rule);border-bottom-width:2px;border-radius:4px;padding:1px 4px;background:var(--bg)}.cmd{display:block;background:var(--bg);border:1px solid var(--rule);border-radius:5px;margin:3px 0;padding:4px 6px}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--rule);padding:5px 6px}th{font-weight:750}td:first-child,th:first-child{white-space:nowrap}.time{font-weight:800;color:var(--accent)}.tiny{font-size:.85em;color:var(--muted)}.note{border-left:4px solid var(--accent);padding-left:8px;margin-top:7px}
+    @media(min-width:720px){.grid{grid-template-columns:1fr 1fr}}
+    @media print{@page{size:A4 portrait;margin:8mm}*{print-color-adjust:exact;-webkit-print-color-adjust:exact}html{color-scheme:light;--bg:#fff;--ink:#111;--muted:#333;--panel:#f6f7f9;--rule:#aeb8c3;--accent:#003f85}body{max-width:none;padding:0;font-size:8.1pt;line-height:1.2}header{margin-bottom:5px;padding-bottom:4px}h1{font-size:15pt}h2{font-size:9.5pt;margin-bottom:3px;padding-bottom:2px}.grid{grid-template-columns:1fr 1fr;gap:5px}.card{padding:5px 7px;border-radius:4px;break-inside:avoid}li{margin:1px 0}ul,ol{margin:2px 0}.cmd{padding:1px 4px;margin:1px 0}th,td{padding:2px 3px}.tiny{font-size:7pt}.note{margin-top:3px}.table-wrap{overflow:visible}}
+  </style>
+</head>
+<body>
+<header>
+  <h1>리치 현장 진행표</h1>
+  <p class="sub">Hello World AI 해커톤 · 2026.10.31 토 · 13:00–17:00 · 진행자용</p>
+</header>
+<main class="grid">
+  <section class="card" aria-labelledby="before"><h2 id="before">1 · 출발 전</h2>
+    <ul>
+      <li>폰 핫스팟 데이터·배터리 확인. 행사장 Wi-Fi 우선, 안 되면 폰 핫스팟.</li>
+      <li>노트북·로봇 충전, 충전기·멀티탭 챙기기.</li>
+      <li>외부 스피커 연결·볼륨 점검.</li>
+      <li>로봇이 핫스팟에 붙는지 확인. MP3·모델 파일 사전 준비.</li>
+    </ul>
+  </section>
+  <section class="card" aria-labelledby="setup"><h2 id="setup">2 · 도착 후 세팅 5단계</h2>
+    <ol>
+      <li>로봇 조립·전원·데몬 확인. 폰으로 <code>reachy-mini-ap</code>에 접속 → <code>http://reachy-mini.local:8000/settings</code>에서 행사장 Wi-Fi 연결. 안 되면 폰 핫스팟 사용. 노트북도 같은 망에 연결.</li>
+      <li><strong>조립 직후:</strong> <code>.venv\Scripts\python.exe scripts\robot_check.py</code>. 연결 실패 시 공유기 접속 기기 목록에서 IP 확인 → <code>.venv\Scripts\python.exe scripts\robot_check.py --host 192.168.45.225</code> (집 Wi-Fi 예시).</li>
+      <li>MP3 점검: <code>.venv\Scripts\python.exe scripts\play_lines.py --list</code>; 타이머·환영 MP3도 확인.</li>
+      <li>입구 카메라 각도 점검: <code>.venv\Scripts\python.exe scripts\welcome_mode.py --robot --preview</code> → <kbd>Q</kbd>로 종료.</li>
+      <li>통합 앱 시작: <code>.venv\Scripts\python.exe scripts\riichi.py --robot --mode welcome</code>. 자동 검색 실패 시 끝에 <code>--host 로봇IP</code> 추가.</li>
+    </ol>
+  </section>
+  <section class="card wide" aria-labelledby="schedule"><h2 id="schedule">3 · 시간표 × 리치 모드</h2>
+    <div class="table-wrap"><table><thead><tr><th>시각</th><th>진행 / 리치</th><th>전환·재생</th></tr></thead><tbody>
+      <tr><td class="time">13:00</td><td>체크인 · 환영</td><td><kbd>F3</kbd> 또는 대화 중 “Welcome Mode 시작”. 환영 대사 1–8번 중 무작위 인사.</td></tr>
+      <tr><td class="time">13:15</td><td>오프닝 · 대화</td><td>“웰컴 모드 종료” 또는 <kbd>F1</kbd> → 대사 <strong>1 오프닝, 2 규칙, 3 일정</strong>.</td></tr>
+      <tr><td class="time">13:30</td><td>한 줄 소개 · 대화</td><td>필요 시 대사 <strong>4 선택 과제, 5 심사</strong>. 참가자 질문에 답하기.</td></tr>
+      <tr><td class="time">14:30</td><td>중간 점검 · 대화</td><td><kbd>F1</kbd> 유지. 일정·규칙 질문 응답.</td></tr>
+      <tr><td class="time">15:00</td><td>제출 30분 전</td><td>대사 <strong>6 “제출 마감까지 삼십 분 남았어요.”</strong></td></tr>
+      <tr><td class="time">15:20</td><td>제출 10분 전</td><td>대사 <strong>7 “제출 마감까지 십 분 남았어요!”</strong></td></tr>
+      <tr><td class="time">15:30</td><td>제출 마감·1차 심사</td><td>진행자가 마감 확인. 리치 대화 또는 대기.</td></tr>
+      <tr><td class="time">15:55</td><td>결선 · 10명 × 3분</td><td>대사 <strong>8 결선</strong> → “타이머 모드 활성화” 또는 <kbd>F2</kbd> → 발표마다 <kbd>Enter</kbd>.</td></tr>
+      <tr><td class="time">16:30</td><td>시상</td><td><kbd>F1</kbd> 또는 “타이머 모드 해제” → 대사 <strong>9 시상, 10 후원사 감사</strong>.</td></tr>
+      <tr><td class="time">16:42</td><td>단체 사진</td><td>리치는 대기. 촬영 동의 확인.</td></tr>
+      <tr><td class="time">16:47</td><td>다음 안내·마무리</td><td>대사 <strong>11 마무리</strong>. 17:00 종료 예정.</td></tr>
+    </tbody></table></div>
+    <p class="tiny">대사 재생: 별도 PowerShell에서 <code>.venv\Scripts\python.exe scripts\play_lines.py 번호</code> (예: <code>.venv\Scripts\python.exe scripts\play_lines.py 6</code>). 이 대사는 노트북 출력으로 재생. 1–11번은 <code>agent/lines.ko.md</code>, 환영 1–8번은 <code>agent/welcome-lines.ko.md</code>.</p>
+  </section>
+  <section class="card" aria-labelledby="controls"><h2 id="controls">4 · 말로 하는 명령어 / 단축키</h2>
+    <table><thead><tr><th>상황</th><th>정확한 말 / 키</th></tr></thead><tbody>
+      <tr><td>대화 → 환영</td><td>“Welcome Mode 시작” / <kbd>F3</kbd></td></tr>
+      <tr><td>환영 → 대화</td><td>“웰컴 모드 종료” / <kbd>F1</kbd></td></tr>
+      <tr><td>대화 → 타이머</td><td>“타이머 모드 활성화” / <kbd>F2</kbd></td></tr>
+      <tr><td>3분 즉시 시작</td><td>“timer 3 minutes” (대화 중)</td></tr>
+      <tr><td>타이머 → 대화</td><td>“타이머 모드 해제” / <kbd>F1</kbd></td></tr>
+      <tr><td>타이머 조작</td><td><kbd>Enter</kbd>/<kbd>Space</kbd> 시작·다음, <kbd>p</kbd> 일시정지·재개, <kbd>r</kbd> 초기화, <kbd>k</kbd>/<kbd>e</kbd> 다음 발표 한국어/영어, <kbd>n</kbd> 다음 길이, <kbd>q</kbd> 종료</td></tr>
+    </tbody></table>
+    <p class="tiny">문자 점검: <code>.venv\Scripts\python.exe scripts\riichi.py --text</code>에서 <code>/f1</code>·<code>/f2</code>·<code>/f3</code>·<code>/enter</code>·<code>/quit</code>.</p>
+  </section>
+  <section class="card" aria-labelledby="trouble"><h2 id="trouble">5 · 문제가 생기면</h2>
+    <ul>
+      <li><strong>로봇 연결 실패:</strong> 전원·같은 Wi-Fi·데몬 확인. <code>reachy-mini.local</code>이 안 잡히면 공유기 기기 목록에서 IP를 확인하고 위 점검 명령에 <code>--host</code> 지정. 계속 실패하면 노트북만 사용: <code>.venv\Scripts\python.exe scripts\riichi.py</code> 또는 <code>.venv\Scripts\python.exe scripts\welcome_mode.py --preview</code>.</li>
+      <li><strong>인터넷 끊김:</strong> 대화·음성 인식은 중단. 저장된 MP3 재생 <code>.venv\Scripts\python.exe scripts\play_lines.py 6</code>; 3분 결선은 <code>.venv\Scripts\python.exe scripts\pitch_timer.py --lang ko</code>. 환영 MP3·모델이 준비됐다면 <code>.venv\Scripts\python.exe scripts\welcome_mode.py --preview</code>도 동작.</li>
+      <li><strong>음성 전환 안 됨:</strong> <kbd>F1</kbd> 대화 / <kbd>F2</kbd> 타이머 / <kbd>F3</kbd> 환영. 타이머에서는 <kbd>Enter</kbd>로 발표 시작.</li>
+      <li><strong>엉뚱한 답:</strong> 진행자가 즉시 정정하고 필요한 모드로 전환. 모르는 사실은 운영진에게 연결.</li>
+      <li><strong>소리가 작음:</strong> 노트북 출력·볼륨과 외부 스피커 확인.</li>
+    </ul>
+    <p class="note"><strong>오프닝에 알리기:</strong> 행동강령상 허락 없는 촬영 금지. 리치는 카메라 프레임·영상을 저장하거나 업로드하지 않고 얼굴 인식도 하지 않습니다.</p>
+  </section>
+</main>
+</body>
+</html>

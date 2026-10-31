@@ -1,0 +1,12 @@
+.env
+*.env
+audio/
+yolo11n.pt
+yolo11n.onnx
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.onnx
+*.pt
