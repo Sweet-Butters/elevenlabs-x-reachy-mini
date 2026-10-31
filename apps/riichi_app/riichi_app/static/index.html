@@ -1,0 +1,8 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>리치 조종</title><link rel="stylesheet" href="/static/style.css"></head><body><main>
+<h1>리치 조종</h1><p id="connection">연결 중…</p>
+<section><h2>모드</h2><div class="grid"><button onclick="send('welcome')">환영 Welcome</button><button onclick="send('conversation')">대화</button><button onclick="send('timer')">타이머</button></div></section>
+<section><h2>타이머 <span id="remaining"></span></h2><div class="grid"><button onclick="send('start_next')">시작 · 다음</button><button onclick="send('pause')">일시정지 · 계속</button><button onclick="send('reset')">초기화</button></div><label>길이 (초)<input id="length" type="number" min="1" max="3600" value="180"></label><button onclick="send('length',Number(document.getElementById('length').value))">길이 설정</button></section>
+<section><h2>현장 조절</h2><div class="grid"><button id="dance" onclick="toggleDance()">춤 끄기</button><button onclick="send('test')">테스트 말하기</button></div><label>볼륨 <span id="volnum">100</span><input id="volume" type="range" min="0" max="100" value="100" oninput="document.getElementById('volnum').textContent=this.value" onchange="send('volume',Number(this.value))"></label></section>
+<section><h2>상태</h2><p>모드: <strong id="mode">—</strong></p><p>타이머: <span id="timer_state">—</span></p><p>감지: <span id="tracking">—</span></p><p>마지막 인식: <span id="transcript">—</span></p><p class="error">오류: <span id="error">없음</span></p></section>
+<section><h2>ElevenLabs API 키</h2><p>저장한 키는 다시 표시되지 않습니다.</p><input id="key" type="password" autocomplete="off" placeholder="API key"><button onclick="saveKey()">키 저장</button><p id="key_status"></p></section>
+</main><script src="/static/main.js"></script></body></html>

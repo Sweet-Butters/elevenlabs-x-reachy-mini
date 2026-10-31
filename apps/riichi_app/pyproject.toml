@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "riichi_app"
+version = "0.1.0"
+description = "On-robot Korean Reachy Mini booth host"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "reachy-mini>=1.13,<1.14", "elevenlabs>=2,<3", "websockets>=15,<17", "numpy>=1.26,<3"
+]
+keywords = ["reachy-mini-app"]
+
+[project.entry-points."reachy_mini_apps"]
+riichi_app = "riichi_app.main:RiichiApp"
+
+[tool.setuptools]
+package-dir = { "" = "." }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["riichi_app*"]
+exclude = ["build*", "*.egg-info*"]
+
+[tool.setuptools.package-data]
+riichi_app = ["config.json", "static/*"] # Also include all non-.py files
+[project.optional-dependencies]
+tracking = ["onnxruntime>=1.18,<2", "opencv-python-headless>=4.8,<5"]
