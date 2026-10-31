@@ -388,15 +388,33 @@ class Controller:
                     dances = RecordedMoves("pollen-robotics/reachy-mini-dances-library")
                 except Exception as exc:
                     print(f"춤 라이브러리 없음: {exc}", flush=True)
-            idle_dances = ("side_to_side_sway", "groovy_sway_and_roll", "yeah_nod", "uh_huh_tilt",
-                           "head_tilt_roll", "pendulum_swing", "chin_lead", "simple_nod")
+            idle_dances = [n for n in (sorted(dances.moves) if dances else []) if n != "stumble_and_recover"]
+            recent = []
             robot = self.robot
 
             def dance_once(name, yaw):
                 robot.play_move(dances.get(name), initial_goto_duration=0.4, sound=False)
-                robot.goto_target(body_yaw=yaw, duration=0.7)
-                robot.goto_target(body_yaw=-yaw, duration=0.9)
-                robot.goto_target(body_yaw=0.0, duration=0.6)
+                # 몸통 패턴도 매번 다르게: 한 번 돌기, 좌우 흔들기, 빠른 두 번 흔들기
+                pattern = random.choice(("turn", "sway", "double"))
+                if pattern == "turn":
+                    robot.goto_target(body_yaw=yaw, duration=0.8)
+                    robot.goto_target(body_yaw=0.0, duration=0.8)
+                elif pattern == "sway":
+                    robot.goto_target(body_yaw=yaw, duration=0.7)
+                    robot.goto_target(body_yaw=-yaw, duration=0.9)
+                    robot.goto_target(body_yaw=0.0, duration=0.6)
+                else:
+                    for _ in range(2):
+                        robot.goto_target(body_yaw=yaw * 0.6, duration=0.4)
+                        robot.goto_target(body_yaw=-yaw * 0.6, duration=0.4)
+                    robot.goto_target(body_yaw=0.0, duration=0.5)
+
+            def next_dance():
+                choices = [n for n in idle_dances if n not in recent] or idle_dances
+                name = random.choice(choices)
+                recent.append(name)
+                del recent[:-5]
+                return name
 
             print("대화 모드 사람 추적" + ("/손인사 감지" if pose else "") + " 시작", flush=True)
             while not self.gaze_stop.is_set():
@@ -408,7 +426,7 @@ class Controller:
                 dancing = dance_thread is not None and dance_thread.is_alive()
                 if dances and not dancing and not talking and now - last_talk > 5.0:
                     dance_thread = threading.Thread(
-                        target=dance_once, args=(random.choice(idle_dances), random.choice((-1, 1)) * 0.45),
+                        target=dance_once, args=(next_dance(), random.choice((-1, 1)) * random.uniform(0.3, 0.6)),
                         daemon=True)
                     dance_thread.start()
                     dancing = True
