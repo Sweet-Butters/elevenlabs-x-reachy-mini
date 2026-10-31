@@ -150,6 +150,7 @@ def main(stop_event=None, argv=None):
     parser.add_argument("--camera", choices=("webcam", "robot"))
     parser.add_argument("--robot", action="store_true", help="로봇 머리·안테나·스피커 사용")
     parser.add_argument("--no-track", action="store_true", help="사람을 향한 머리 추적 끄기")
+    parser.add_argument("--no-body", action="store_true", help="사람 추적 중 몸통 회전 끄기")
     parser.add_argument("--host", help="로봇 호스트 이름 또는 IP (기본: 자동 검색)")
     parser.add_argument("--detector", choices=("person", "motion"), default="person")
     parser.add_argument("--region", type=parse_region, default=(0.0, 0.0, 1.0, 1.0), metavar="x1,y1,x2,y2")
@@ -196,7 +197,7 @@ def main(stop_event=None, argv=None):
             if args.robot:
                 from person_gaze import PersonGaze, neutral
                 if args.camera == "robot" and args.detector == "person" and not args.no_track:
-                    gaze = PersonGaze(mini, log=True)
+                    gaze = PersonGaze(mini, log=True, body=not args.no_body)
                 else:
                     neutral(mini)
             cap = None
@@ -250,6 +251,8 @@ def main(stop_event=None, argv=None):
                     if frames % 100 == 0:
                         print(f"프레임 처리: {frames}", flush=True)
             finally:
+                if args.robot:
+                    neutral(mini)
                 if cap:
                     cap.release()
                 if args.preview:

@@ -279,6 +279,8 @@ class Controller:
                     welcome_args.append("--robot")
                 if self.args.no_track:
                     welcome_args.append("--no-track")
+                if self.args.no_body:
+                    welcome_args.append("--no-body")
                 if self.args.host:
                     welcome_args.extend(("--host", self.args.host))
                 if self.args.preview:
@@ -296,7 +298,7 @@ class Controller:
             host, _ = resolve_robot_host(self.args.host)
             with ReachyMini(host=host, connection_mode="network", media_backend="default", timeout=15) as robot:
                 detector = PersonDetector(cv2)
-                gaze = PersonGaze(robot, log=True)
+                gaze = PersonGaze(robot, log=True, body=not self.args.no_body)
                 print("대화 모드 사람 추적 시작", flush=True)
                 while not self.gaze_stop.is_set():
                     start = time.monotonic()
@@ -468,6 +470,7 @@ def main():
     parser.add_argument("--detector", choices=("person", "motion"), default="person")
     parser.add_argument("--robot", action="store_true")
     parser.add_argument("--no-track", action="store_true", help="대화·환영 모드 사람 추적 끄기")
+    parser.add_argument("--no-body", action="store_true", help="사람 추적 중 몸통 회전 끄기")
     parser.add_argument("--max-seconds", type=float, help="짧은 동작 확인 후 종료")
     parser.add_argument("--host", help="로봇 호스트 이름 또는 IP (기본: 자동 검색)")
     parser.add_argument("--preview", action="store_true")
