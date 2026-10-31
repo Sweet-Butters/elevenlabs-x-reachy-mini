@@ -267,10 +267,11 @@ def main(stop_event=None, argv=None):
                         wave_file = ROOT / "audio" / "wave" / f"0{last_wave_line}.mp3"
                         greet(mini if args.robot else None, None, width, height, wave_file)
                         last_greeting = now
-                    if boxes:
+                    # 붐비는 행사장에서는 늘 누군가 보이므로, "다가오는 사람"이 없을 때 춘다
+                    if center:
                         last_person = now
                     dancing = dance_thread is not None and dance_thread.is_alive()
-                    if dances and not dancing and not boxes and now - last_person > 3.0:
+                    if dances and not dancing and not center and now - last_person > 3.0 and now - last_greeting > 4.0:
                         name = random.choice(idle_dances)
                         swing = random.choice((-1, 1)) * 0.45  # 공식 춤은 몸통을 안 쓰므로 춤 사이에 몸통을 좌우로 흔든다
 
