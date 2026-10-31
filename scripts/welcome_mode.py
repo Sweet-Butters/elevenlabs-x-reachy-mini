@@ -158,10 +158,12 @@ def main(stop_event=None, argv=None):
     parser.add_argument("--cooldown", type=float, default=8.0, help="인사 간격(초)")
     parser.add_argument("--preview", action="store_true", help="영역과 감지 박스를 화면에 표시")
     parser.add_argument("--max-seconds", type=float, help="테스트용 실행 제한")
+    parser.add_argument("--no-wave", action="store_true", help="손인사 감지 끄기")
+    parser.add_argument("--wave-cooldown", type=float, default=10.0, help="손인사 간격(초)")
     args = parser.parse_args(argv)
     if args.camera is None:
         args.camera = "robot" if args.robot else "webcam"
-    if not 0 <= args.sensitivity <= 1 or args.cooldown < 0 or (args.max_seconds is not None and args.max_seconds <= 0):
+    if not 0 <= args.sensitivity <= 1 or args.cooldown < 0 or args.wave_cooldown < 0 or (args.max_seconds is not None and args.max_seconds <= 0):
         parser.error("sensitivity는 0~1, cooldown은 0 이상, max-seconds는 0 초과여야 합니다.")
 
     import cv2
@@ -171,12 +173,21 @@ def main(stop_event=None, argv=None):
     missing = [str(path) for _, _, _, path in entries if not path.is_file() or path.stat().st_size == 0]
     if missing:
         raise RuntimeError("환영 MP3가 없습니다. 먼저 make_lines.py --welcome 실행: " + ", ".join(missing))
+    wave_pose = wave_detector = None
+    if not args.no_wave and args.camera == "robot":
+        from wave_gesture import PoseDetector, WaveDetector
+        wave_pose = PoseDetector(cv2)
+        wave_detector = WaveDetector(args.wave_cooldown)
+        for name in ("01.mp3", "02.mp3"):
+            if not (ROOT / "audio" / "wave" / name).is_file():
+                raise RuntimeError("손인사 MP3 없음: make_wave_lines.py 실행")
+        print("손인사 감지: YOLO11n-pose ONNX, CPU 1 thread", flush=True)
 
     person = None
     if args.detector == "person":
-        person = PersonDetector(cv2)
+        person = PersonDetector(cv2) if not wave_pose else None
         approach = ApproachDetector(args.sensitivity)
-        print("사람 감지기 초기화: YOLO11n ONNX, CPU 1 thread, class 0(person)", flush=True)
+        print("사람 감지기 초기화: " + ("YOLO11n-pose" if wave_pose else "YOLO11n") + " ONNX, CPU 1 thread", flush=True)
     else:
         motion = MotionDetector(cv2, args.sensitivity)
         print("움직임 감지기 초기화: OpenCV MOG2", flush=True)
@@ -212,6 +223,9 @@ def main(stop_event=None, argv=None):
             first_frame_deadline = start + 8.0
             last_greeting = -float("inf")
             last_line = None
+            last_wave_line = 0
+            wave_target = None
+            wave_target_until = 0.0
             frames = 0
             try:
                 while (not stop_event or not stop_event.is_set()) and (args.max_seconds is None or time.monotonic() - start < args.max_seconds):
@@ -225,16 +239,31 @@ def main(stop_event=None, argv=None):
                     height, width = frame.shape[:2]
                     region = region_pixels(args.region, width, height)
                     boxes = []
-                    if person:
-                        boxes = person.detect(frame)
+                    if args.detector == "person":
+                        poses = wave_pose.detect(frame) if wave_pose else []
+                        boxes = [box for box, _ in poses] if wave_pose else person.detect(frame)
                         boxes = [box for box in boxes if inside(box, region)]
                         center = approach.update(boxes, time.monotonic(), width, height)
                     else:
                         center, boxes = motion.update(frame, region)
-                    if gaze:
-                        gaze.update(boxes, width, height)
                     now = time.monotonic()
-                    if center and now - last_greeting >= args.cooldown:
+                    waved = wave_detector.update(poses if args.detector == "person" else wave_pose.detect(frame), now) if wave_detector else None
+                    if waved:
+                        print(f"손인사 감지: {waved}", flush=True)
+                        wave_target, wave_target_until = waved, now + 3.0
+                        last_wave_line = 1 + last_wave_line % 2
+                        wave_file = ROOT / "audio" / "wave" / f"0{last_wave_line}.mp3"
+                        greet(mini if args.robot else None, None, width, height, wave_file)
+                        last_greeting = now
+                    if gaze:
+                        if wave_target and boxes and now < wave_target_until:
+                            cx = (wave_target[0]+wave_target[2])/2
+                            cy = (wave_target[1]+wave_target[3])/2
+                            tracked = [min(boxes, key=lambda b: ((b[0]+b[2])/2-cx)**2 + ((b[1]+b[3])/2-cy)**2)]
+                        else:
+                            tracked = boxes
+                        gaze.update(tracked, width, height)
+                    if center and not waved and now - last_greeting >= args.cooldown:
                         choices = [entry for entry in entries if entry[0] != last_line]
                         number, _, spoken, path = random.choice(choices)
                         last_line = number

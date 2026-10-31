@@ -11,6 +11,7 @@ import time
 from common import AGENT_ID, api_key
 from pitch_timer import announcement_schedule, clock_text
 from timer_audio import path, phrase
+from wake_gate import WakeGate
 
 
 def duration_from_text(text):
@@ -37,8 +38,10 @@ def passive_command(text, mode):
 
 class ScribeListener:
     """Only committed Scribe transcripts enter the controller; no audio is stored."""
-    def __init__(self, events):
+    def __init__(self, events, robot=None, korean=False):
         self.events = events
+        self.robot = robot
+        self.korean = korean
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
 
@@ -50,19 +53,37 @@ class ScribeListener:
         self.thread.join(timeout=3)
 
     def run(self):
-        import pyaudio
         from websockets.sync.client import connect
-        audio = pyaudio.PyAudio()
+        audio = None
         stream = None
         try:
-            stream = audio.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True,
-                                frames_per_buffer=1600)
+            if self.robot:
+                import numpy as np
+                if self.robot.media.get_input_audio_samplerate() != 16000:
+                    raise RuntimeError("로봇 마이크 16 kHz 필요")
+                print("STT 입력: 로봇 마이크", flush=True)
+            else:
+                import pyaudio
+                audio = pyaudio.PyAudio()
+                stream = audio.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True,
+                                    frames_per_buffer=1600)
+                print("STT 입력: 노트북 마이크", flush=True)
             url = "wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=scribe_v2_realtime&audio_format=pcm_16000&commit_strategy=vad"
+            if self.korean:
+                url += "&language_code=ko"
             with connect(url, additional_headers={"xi-api-key": api_key()}, open_timeout=10, close_timeout=2) as ws:
                 def send():
                     try:
                         while not self.stop.is_set():
-                            raw = stream.read(1600, exception_on_overflow=False)
+                            if self.robot:
+                                sample = self.robot.media.get_audio_sample()
+                                if sample is None:
+                                    time.sleep(0.01)
+                                    continue
+                                mono = sample.mean(axis=1) if sample.ndim == 2 else sample
+                                raw = (np.clip(mono, -1, 1) * 32767).astype("<i2").tobytes()
+                            else:
+                                raw = stream.read(1600, exception_on_overflow=False)
                             ws.send(json.dumps({"message_type": "input_audio_chunk", "audio_base_64": base64.b64encode(raw).decode()}))
                     except Exception as exc:
                         if not self.stop.is_set():
@@ -88,12 +109,17 @@ class ScribeListener:
             if stream:
                 stream.stop_stream()
                 stream.close()
-            audio.terminate()
+            if audio:
+                audio.terminate()
 
 
 class Controller:
     def __init__(self, args):
         self.args = args
+        for name, default in (("followup_seconds", 5), ("no_wake_word", False),
+                              ("no_wave", False), ("wave_cooldown", 10)):
+            if not hasattr(args, name):
+                setattr(args, name, default)
         self.mode = None
         self.length = args.seconds if args.seconds is not None else round(args.minutes * 60)
         self.current_length = self.length
@@ -114,6 +140,13 @@ class Controller:
         self.last_display = ""
         self.voice_id = None
         self.session_epoch = 0
+        self.gate = WakeGate(args.followup_seconds)
+        self.audio_sink = None
+        self.robot = None
+        self.wave_busy = threading.Event()
+        self.wave_thread = None
+        self.last_wave_line = 0
+        self.initial_response_seen = threading.Event()
 
     def speak(self, kind, seconds=0, lang=None):
         from play_lines import play
@@ -206,17 +239,32 @@ class Controller:
         tools.register("set_mode", set_mode)
         self.session_epoch += 1
         epoch = self.session_epoch
-        config = ConversationInitiationData(conversation_config_override={"conversation": {"text_only": True}}) if self.args.text else None
+        self.initial_response_seen.clear()
+        gated = not self.args.no_wake_word and not self.args.text
+        config = ConversationInitiationData(conversation_config_override={"conversation": {"text_only": True}}) if (self.args.text or gated) else None
         kwargs = {}
-        if not self.args.text:
+        if gated:
+            from gated_audio import ReplySpeaker
+            self.audio_sink = ReplySpeaker(self.robot, scratch=__import__("pathlib").Path(__file__).resolve().parents[2] / "scratchpad",
+                                         other_audio=self.wave_busy)
+        elif not self.args.text:
             from elevenlabs.conversational_ai.default_audio_interface import DefaultAudioInterface
             kwargs["audio_interface"] = DefaultAudioInterface()
         self.session = Conversation(ElevenLabs(api_key=api_key()), AGENT_ID, requires_auth=True,
             client_tools=tools, config=config,
-            callback_agent_response=lambda answer: self.events.put(("answer", (epoch, answer))),
+            callback_agent_response=lambda answer: self.agent_response(epoch, answer, gated),
             callback_user_transcript=lambda transcript: print(f"나> {transcript}", flush=True), **kwargs)
         self.session.start_session()
         print("에이전트 연결 중...", flush=True)
+
+    def agent_response(self, epoch, answer, gated):
+        if gated and not self.initial_response_seen.is_set():
+            self.initial_response_seen.set()
+            print("에이전트 시작 인사 음소거", flush=True)
+            return
+        if gated and self.audio_sink:
+            self.audio_sink.speak_text(answer, on_done=self.gate.answered)
+        self.events.put(("answer", (epoch, answer)))
 
     def disconnect(self):
         if self.session:
@@ -224,6 +272,9 @@ class Controller:
             session.end_session()
             session.wait_for_session_end()
             print("에이전트 연결 종료", flush=True)
+        if self.audio_sink:
+            self.audio_sink.wait()
+        self.audio_sink = None
 
     def switch(self, target):
         if target == self.mode:
@@ -237,6 +288,12 @@ class Controller:
         if self.listener:
             self.listener.close()
             self.listener = None
+        if self.wave_thread:
+            self.wave_thread.join(timeout=4)
+            self.wave_thread = None
+        if self.robot:
+            self.robot.__exit__(None, None, None)
+            self.robot = None
         if self.welcome_stop:
             self.welcome_stop.set()
             self.welcome_thread.join(timeout=5)
@@ -245,18 +302,23 @@ class Controller:
         print(f"\n========== 리치 모드: {target.upper()} ==========" , flush=True)
         print("F1 대화 · F2 타이머 · F3 환영 | 타이머: Enter 시작, p 정지, r 초기화, k/e 언어, n 길이, q 종료", flush=True)
         if target == "conversation":
-            if self.args.robot and not self.args.no_track:
+            if self.args.robot:
+                from reachy_mini import ReachyMini
+                from robot_host import resolve_robot_host
+                host, _ = resolve_robot_host(self.args.host)
+                self.robot = ReachyMini(host=host, connection_mode="network", media_backend="default", timeout=15)
+                self.robot.__enter__()
+            if self.args.robot and (not self.args.no_track or (not self.args.no_wave and not self.args.no_wake_word)):
                 self.gaze_stop = threading.Event()
                 self.gaze_thread = threading.Thread(target=self.run_gaze, daemon=True)
                 self.gaze_thread.start()
             elif self.args.robot:
                 from person_gaze import neutral
-                from reachy_mini import ReachyMini
-                from robot_host import resolve_robot_host
-                host, _ = resolve_robot_host(self.args.host)
-                with ReachyMini(host=host, connection_mode="network", media_backend="default", timeout=15) as robot:
-                    neutral(robot)
+                neutral(self.robot)
             self.connect()
+            if not self.args.text and not self.args.no_wake_word:
+                self.listener = ScribeListener(self.events, robot=self.robot, korean=True)
+                self.listener.start()
         else:
             if target == "timer" and self.args.robot:
                 from person_gaze import neutral
@@ -285,28 +347,47 @@ class Controller:
                     welcome_args.extend(("--host", self.args.host))
                 if self.args.preview:
                     welcome_args.append("--preview")
+                if self.args.no_wave:
+                    welcome_args.append("--no-wave")
+                welcome_args.extend(("--wave-cooldown", str(self.args.wave_cooldown)))
                 self.welcome_thread = threading.Thread(target=self.run_welcome, args=(welcome_mode, welcome_args), daemon=True)
                 self.welcome_thread.start()
 
     def run_gaze(self):
         try:
             import cv2
-            from reachy_mini import ReachyMini
             from person_gaze import PersonGaze
-            from robot_host import resolve_robot_host
             from welcome_mode import PersonDetector
-            host, _ = resolve_robot_host(self.args.host)
-            with ReachyMini(host=host, connection_mode="network", media_backend="default", timeout=15) as robot:
-                detector = PersonDetector(cv2)
-                gaze = PersonGaze(robot, log=True, body=not self.args.no_body)
-                print("대화 모드 사람 추적 시작", flush=True)
-                while not self.gaze_stop.is_set():
-                    start = time.monotonic()
-                    frame = robot.media.get_frame()
-                    if frame is not None:
-                        height, width = frame.shape[:2]
-                        gaze.update(detector.detect(frame), width, height)
-                    self.gaze_stop.wait(max(0, 0.25 - (time.monotonic() - start)))
+            from wave_gesture import PoseDetector, WaveDetector
+            pose = PoseDetector(cv2) if not self.args.no_wave and not self.args.no_wake_word else None
+            detector = PersonDetector(cv2) if not self.args.no_track and not pose else None
+            wave = WaveDetector(self.args.wave_cooldown) if pose else None
+            gaze = PersonGaze(self.robot, log=True, body=not self.args.no_body) if not self.args.no_track else None
+            wave_target = None
+            wave_target_until = 0.0
+            print("대화 모드 사람 추적" + ("/손인사 감지" if pose else "") + " 시작", flush=True)
+            while not self.gaze_stop.is_set():
+                start = time.monotonic()
+                frame = self.robot.media.get_frame()
+                if frame is not None:
+                    height, width = frame.shape[:2]
+                    poses = pose.detect(frame) if pose else []
+                    boxes = [box for box, _ in poses] if pose else detector.detect(frame) if detector else []
+                    waved = wave.update(poses) if wave else None
+                    if waved:
+                        wave_target, wave_target_until = waved, time.monotonic() + 3.0
+                    if wave_target and boxes and time.monotonic() < wave_target_until:
+                        cx = (wave_target[0] + wave_target[2]) / 2
+                        cy = (wave_target[1] + wave_target[3]) / 2
+                        tracked = [min(boxes, key=lambda b: ((b[0]+b[2])/2-cx)**2 + ((b[1]+b[3])/2-cy)**2)]
+                    else:
+                        tracked = boxes
+                    if gaze:
+                        gaze.update(tracked, width, height)
+                    if waved:
+                        print(f"손인사 감지: {waved}", flush=True)
+                        self.wave_greet()
+                self.gaze_stop.wait(max(0, 0.25 - (time.monotonic() - start)))
         except Exception as exc:
             self.events.put(("error", f"사람 추적: {exc}"))
 
@@ -315,6 +396,30 @@ class Controller:
             module.main(self.welcome_stop, argv)
         except Exception as exc:
             self.events.put(("error", f"환영 모드: {exc}"))
+
+    def wave_greet(self):
+        if self.wave_busy.is_set() or (self.audio_sink and self.audio_sink.busy.is_set()):
+            print("손인사 응답 보류: 오디오 재생 중", flush=True)
+            return
+        self.wave_busy.set()
+        def play_wave():
+            try:
+                from pathlib import Path
+                from play_lines import play
+                self.last_wave_line = 1 + self.last_wave_line % 2
+                file = Path(__file__).resolve().parents[1] / "audio" / "wave" / f"0{self.last_wave_line}.mp3"
+                if self.robot:
+                    self.robot.goto_target(antennas=[0.35, -0.35], duration=0.2)
+                    self.robot.goto_target(antennas=[-0.35, 0.35], duration=0.2)
+                    self.robot.goto_target(antennas=[0, 0], duration=0.2)
+                    self.robot.media.play_sound(str(file.resolve()))
+                else:
+                    play(file)
+                time.sleep(3)
+            finally:
+                self.wave_busy.clear()
+        self.wave_thread = threading.Thread(target=play_wave, daemon=True)
+        self.wave_thread.start()
 
     def show_timer(self, force=False):
         if self.mode != "timer":
@@ -409,13 +514,35 @@ class Controller:
             if kind == "text" and value.lower() in ("/enter", "/p", "/r", "/k", "/e") and self.mode == "timer":
                 self.timer_key("\r" if value.lower() == "/enter" else value[-1].lower())
                 return True
-            print(f"인식> {value}" if self.mode != "conversation" else f"나> {value}", flush=True)
+            if self.mode != "conversation" or kind == "text":
+                print(f"인식> {value}" if self.mode != "conversation" else f"나> {value}", flush=True)
             if self.mode == "conversation":
-                if kind == "text" and self.session:
+                if kind == "transcript" and not self.args.no_wake_word:
+                    decision, message = self.gate.decide(value)
+                    line = f"나> {value} | 게이트> {decision}" + (f": {message}" if message else "")
+                    print(f"\x1b[2m{line}\x1b[0m" if decision == "ignore" and sys.stdout.isatty() else line, flush=True)
+                    if decision == "ack":
+                        from pathlib import Path
+                        file = Path(__file__).resolve().parents[1] / "audio" / "wave" / "ack.mp3"
+                        if self.robot:
+                            self.robot.media.play_sound(str(file.resolve()))
+                        else:
+                            from play_lines import play
+                            play(file)
+                    elif decision == "send":
+                        value = message
+                    else:
+                        return True
+                if (kind == "text" or not self.args.no_wake_word) and self.session and value:
                     deadline = time.monotonic() + 15
                     while self.session._ws is None and time.monotonic() < deadline:
                         time.sleep(0.05)
                     if self.session._ws:
+                        if kind == "transcript" and self.audio_sink:
+                            if not self.initial_response_seen.wait(timeout=6):
+                                self.initial_response_seen.set()
+                                print("에이전트 시작 인사 없음", flush=True)
+                            self.audio_sink.begin_turn()
                         self.session.send_user_message(value)
             else:
                 command = passive_command(value, self.mode)
@@ -454,9 +581,13 @@ class Controller:
                 self.gaze_thread.join(timeout=5)
             if self.listener:
                 self.listener.close()
+            if self.wave_thread:
+                self.wave_thread.join(timeout=4)
             if self.welcome_stop:
                 self.welcome_stop.set()
                 self.welcome_thread.join(timeout=5)
+            if self.robot:
+                self.robot.__exit__(None, None, None)
 
 
 def main():
@@ -466,6 +597,10 @@ def main():
     parser.add_argument("--seconds", type=int)
     parser.add_argument("--text", action="store_true", help="마이크 대신 터미널 문장으로 동작 검증")
     parser.add_argument("--offline", action="store_true", help="클립 누락 시 TTS 건너뜀")
+    parser.add_argument("--no-wake-word", action="store_true", help="기존 상시 음성 대화")
+    parser.add_argument("--followup-seconds", type=float, default=5)
+    parser.add_argument("--no-wave", action="store_true", help="손인사 감지 끄기")
+    parser.add_argument("--wave-cooldown", type=float, default=10)
     parser.add_argument("--camera", choices=("webcam", "robot"))
     parser.add_argument("--detector", choices=("person", "motion"), default="person")
     parser.add_argument("--robot", action="store_true")
@@ -481,6 +616,8 @@ def main():
         parser.error("길이는 1~3600초여야 합니다.")
     if args.max_seconds is not None and args.max_seconds <= 0:
         parser.error("--max-seconds는 0보다 커야 합니다.")
+    if args.followup_seconds < 0 or args.wave_cooldown < 0:
+        parser.error("followup-seconds와 wave-cooldown은 0 이상이어야 합니다.")
     Controller(args).run()
 
 

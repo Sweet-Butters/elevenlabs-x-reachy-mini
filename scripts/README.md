@@ -14,15 +14,21 @@
 
 노트북 마이크·스피커·웹캠으로 먼저 실행합니다. 기본 시작 모드는 대화입니다. 타이머·환영 모드에서는 ElevenLabs 대화 연결을 완전히 끊고, 노트북 마이크는 종료 명령을 듣는 Scribe 실시간 STT에만 사용합니다. 인터넷이 끊기면 F1/F2/F3 키로 전환하세요. 타이머의 미리 만든 MP3는 오프라인에서도 재생됩니다.
 
+대화 모드 기본값은 Scribe STT가 확정한 문장만 받습니다. `--robot`이면 로봇 마이크, 아니면 노트북 마이크를 사용합니다. “리치야, 제출 마감 언제야?”, “리치”, “Hey Reachy”, “Richie”처럼 **문장 맨 앞이나 짧은 인사 뒤에 이름**을 말해야 답합니다. 이름 없는 주변 대화는 화면에 `게이트> ignore`로만 표시됩니다. “리치야”만 말하면 “네!”라고 답하고 6초 안의 다음 문장을 받습니다. 답변 뒤 5초 안에는 이름 없는 후속 질문 한 번을 받습니다. `--followup-seconds 0`으로 후속 질문을 끄고, `--no-wake-word`로 기존 상시 음성 대화를 복원합니다. 대화 중 모드 명령에도 “리치야, 타이머 모드 5분”처럼 이름을 붙이세요. 타이머·환영 모드의 종료 명령은 기존처럼 이름 없이 말합니다. 키보드 F1/F2/F3는 언제나 사용 가능합니다.
+
+로봇 카메라를 쓰는 대화·환영 모드에서는 손을 어깨 위로 들어 좌우로 흔들면 “네, 저도 반가워요! 안녕하세요!” 등으로 인사합니다. 기본 10초 간격이며 `--wave-cooldown 15`로 조정하거나 `--no-wave`로 끌 수 있습니다. 타이머 모드에서는 손인사를 감지하지 않습니다. 행사 전 `make_wave_lines.py`로 MP3를 만들고 `yolo11n-pose.onnx`를 저장소 루트에 내려받으세요.
+
 ```powershell
 .venv\Scripts\python.exe scripts/make_timer_lines.py
 .venv\Scripts\python.exe scripts/riichi.py
 .venv\Scripts\python.exe scripts/riichi.py --mode timer --minutes 5
 .venv\Scripts\python.exe scripts/riichi.py --mode timer --seconds 30
 .venv\Scripts\python.exe scripts/riichi.py --text
+.venv\Scripts\python.exe scripts/make_wave_lines.py
+Invoke-WebRequest -Uri 'https://huggingface.co/unileon-robotics/YOLO11-ONNX/resolve/main/yolo11n-pose.onnx' -OutFile yolo11n-pose.onnx
 ```
 
-대화 중 진행자는 "타이머 모드 활성화", "타이머 모드 켜", "타이머 모드 5분", "타이머 30초", "타이머 모드 1분 30초", "timer 3 minutes", "Welcome Mode 시작", "웰컴 모드"라고 말할 수 있습니다. 길이를 포함한 타이머 명령은 그 길이로 발표를 바로 시작하고 길이를 알립니다. 길이 없는 모드 명령은 준비 상태로 전환합니다. 전환이 안 되면 **F2**로 타이머, **F3**으로 환영, **F1**로 대화를 직접 선택하세요. 현재 모드는 화면에 표시됩니다. 타이머 중에는 "타이머 모드 해제", "타이머 모드 꺼", "타이머 모드 off", "timer mode off"만 대화 모드로 돌아갑니다. "타이머 10분"은 다음 발표 길이를 바꿉니다. 다른 말에는 답하지 않습니다. 환영 중 "웰컴 모드 종료"로 대화 모드에 돌아갑니다.
+대화 중 진행자는 이름을 붙여 "리치야, 타이머 모드 활성화", "타이머 모드 켜", "타이머 모드 5분", "타이머 30초", "타이머 모드 1분 30초", "timer 3 minutes", "Welcome Mode 시작", "웰컴 모드"라고 말할 수 있습니다. 길이를 포함한 타이머 명령은 그 길이로 발표를 바로 시작하고 길이를 알립니다. 길이 없는 모드 명령은 준비 상태로 전환합니다. 전환이 안 되면 **F2**로 타이머, **F3**으로 환영, **F1**로 대화를 직접 선택하세요. 현재 모드는 화면에 표시됩니다. 타이머 중에는 "타이머 모드 해제", "타이머 모드 꺼", "타이머 모드 off", "timer mode off"만 대화 모드로 돌아갑니다. "타이머 10분"은 다음 발표 길이를 바꿉니다. 다른 말에는 답하지 않습니다. 환영 중 "웰컴 모드 종료"로 대화 모드에 돌아갑니다.
 
 타이머 조작: **Enter/Space** 발표 시작, `p` 일시정지·재개, `r` 초기화, `k`/`e` 다음 발표 언어, `n` 새 길이 입력, `q` 앱 종료. 문자 점검 모드에서는 `/f1`, `/f2`, `/f3`, `/enter`, `/p`, `/r`, `/k`, `/e`, `/quit`을 입력합니다. 실시간 STT에 네트워크가 필요하며 STT가 실패해도 화면에 오류가 표시되고 키보드 전환은 계속 가능합니다. 로봇 조립 후에는 `--robot`과 필요하면 `--camera robot`을 붙여 환영 모드의 로봇 동작을 사용합니다.
 
