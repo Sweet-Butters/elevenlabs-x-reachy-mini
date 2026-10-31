@@ -337,6 +337,12 @@ class RiichiApp(ReachyMiniApp):
     def run(self, reachy_mini: ReachyMini, stop_event: threading.Event):
         self.run_stop = stop_event
         self.robot = reachy_mini
+        # 데몬이 앱 전환 뒤 모터를 꺼 둔 채 시작하는 경우가 있어, 시작할 때 깨운다
+        try:
+            reachy_mini.enable_motors()
+            reachy_mini.wake_up()
+        except Exception as exc:
+            self._error(f"모터 깨우기 실패: {exc}")
         self.motion = EmotionMotion(reachy_mini, self.errors)
         self.motion.start()
         self.speaker = Speaker(reachy_mini, self.config, self.errors, before_say=self.motion.pause)
