@@ -1,6 +1,5 @@
 """Reachy Mini Wireless booth app: daemon-owned robot, phone controls."""
 import json
-import math
 import queue
 import random
 import re
@@ -15,6 +14,7 @@ from reachy_mini import ReachyMini, ReachyMiniApp
 from reachy_mini.utils import create_head_pose
 
 from .audio import ScribeListener, Speaker
+from .emotion_motion import EmotionMotion
 from .secrets import api_key, save_api_key
 from .wake_gate import WakeGate
 
@@ -41,14 +41,14 @@ class RiichiApp(ReachyMiniApp):
         self.length = self.current_length = int(self.config.get("timer_seconds", 300))
         self.elapsed, self.resumed_at, self.timer_state, self.timer_number = 0.0, 0.0, "ready", 1
         self.fired = set()
-        self.robot = self.speaker = self.listener = self.session = None
+        self.robot = self.speaker = self.listener = self.session = self.motion = None
         self.ready = False
         self.gate, self.initial_response_seen = WakeGate(5), False
         self.vision = self.gaze = self.approach = None
-        self.next_detect = self.last_greeting = self.last_dance = 0.0
+        self.next_detect = self.last_greeting = 0.0
         self.last_person, self.last_line = time.monotonic(), -1
         self.last_turn = 0.0
-        self.dance_phase = 0
+        self.run_stop = threading.Event()
         self._routes()
 
     def _routes(self):
@@ -147,6 +147,8 @@ class RiichiApp(ReachyMiniApp):
     def _switch(self, mode):
         if mode == self.mode and self.listener is not None:
             return
+        if self.motion:
+            self.motion.pause()
         if self.listener:
             self.listener.close()
             self.listener = None
@@ -221,6 +223,8 @@ class RiichiApp(ReachyMiniApp):
                 if frame is not None:
                     height, width = frame.shape[:2]
                     boxes = self.vision.detect(frame)
+                    if boxes:
+                        self.motion.pause()
                     self.gaze.update(boxes, width, height)
                     if boxes:
                         self.last_person = now
@@ -231,13 +235,7 @@ class RiichiApp(ReachyMiniApp):
                 self._error("사람 추적 중단: " + str(exc))
         if not self.vision and now - self.last_greeting >= self.config.get("fallback_greeting_seconds", 90):
             self._greet(now)
-        if self.dance and now - self.last_person > 5 and now - self.last_dance > 4 and not self.speaker.busy.is_set():
-            self.last_dance = now
-            try:
-                self.robot.goto_target(head=create_head_pose(yaw=12 * math.sin(now * 0.7), pitch=-10, degrees=True),
-                                       antennas=[0.25, -0.25], duration=0.7)
-            except Exception as exc:
-                self._error("춤 동작: " + str(exc))
+        self.motion.tick(self.dance and now - self.last_person > 5 and not self.speaker.busy.is_set())
 
     def _greet(self, now):
         if now - self.last_greeting < 8 or self.speaker.busy.is_set():
@@ -247,6 +245,7 @@ class RiichiApp(ReachyMiniApp):
         if not lines:
             return
         self.last_line = random.choice([i for i in range(len(lines)) if i != self.last_line] or [0])
+        self.motion.pause()
         try:
             self.robot.goto_target(antennas=[0.35, -0.35], duration=0.25)
             self.robot.goto_target(antennas=[-0.35, 0.35], duration=0.25)
@@ -280,14 +279,19 @@ class RiichiApp(ReachyMiniApp):
                 self.speaker.say("네, 말씀해 주세요.")
             elif decision == "send" and self.session:
                 deadline = time.monotonic() + 10
-                while self.session._ws is None and time.monotonic() < deadline:
-                    time.sleep(0.05)
+                while self.session._ws is None and time.monotonic() < deadline and not self.run_stop.is_set():
+                    self.run_stop.wait(0.05)
+                if self.run_stop.is_set():
+                    return
                 if self.session._ws:
                     greeting_deadline = time.monotonic() + 6
-                    while not self.initial_response_seen and time.monotonic() < greeting_deadline:
-                        time.sleep(0.05)
+                    while not self.initial_response_seen and time.monotonic() < greeting_deadline and not self.run_stop.is_set():
+                        self.run_stop.wait(0.05)
+                    if self.run_stop.is_set():
+                        return
                     self.initial_response_seen = True
                     self.last_turn = time.monotonic()
+                    self.motion.pause()
                     self.speaker.busy.set()
                     try:
                         response_language = "English" if english or language == "en" else "Korean"
@@ -331,8 +335,11 @@ class RiichiApp(ReachyMiniApp):
             self._error(value)
 
     def run(self, reachy_mini: ReachyMini, stop_event: threading.Event):
+        self.run_stop = stop_event
         self.robot = reachy_mini
-        self.speaker = Speaker(reachy_mini, self.config, self.errors)
+        self.motion = EmotionMotion(reachy_mini, self.errors)
+        self.motion.start()
+        self.speaker = Speaker(reachy_mini, self.config, self.errors, before_say=self.motion.pause)
         try:
             self._event("volume", 100)
         except Exception as exc:
@@ -364,16 +371,22 @@ class RiichiApp(ReachyMiniApp):
         finally:
             self.ready = False
             stop_event.set()
-            try:
-                if self.listener:
-                    self.listener.close()
-                    self.listener = None
-                if self.session:
-                    session, self.session = self.session, None
-                    self._close_session(session)
-            finally:
-                if self.speaker:
-                    self.speaker.close()
+            self.motion.close()
+            cleanup = []
+            if self.listener:
+                cleanup.append((self.listener.close, ()))
+                self.listener = None
+            if self.session:
+                cleanup.append((self._close_session, (self.session,)))
+                self.session = None
+            if self.speaker:
+                cleanup.append((self.speaker.close, ()))
+            workers = [threading.Thread(target=fn, args=args, daemon=True) for fn, args in cleanup]
+            for worker in workers:
+                worker.start()
+            deadline = time.monotonic() + 3
+            for worker in workers:
+                worker.join(max(0, deadline - time.monotonic()))
 
     def _tick_conversation(self):
         now = time.monotonic()
@@ -385,16 +398,7 @@ class RiichiApp(ReachyMiniApp):
             if self.vision and now >= self.next_detect:
                 self._detect(track=True)
             return
-        if not self.dance or now - self.last_dance < 0.85:
-            return
-        self.last_dance = now
-        try:
-            self.dance_phase += 1
-            yaw = (0.3 if self.dance_phase % 2 else -0.3)
-            self.robot.goto_target(head=create_head_pose(yaw=14 if yaw > 0 else -14, pitch=-8, degrees=True),
-                                   body_yaw=yaw, antennas=[0.25, -0.25], duration=0.65)
-        except Exception as exc:
-            self._error("춤 동작: " + str(exc))
+        self.motion.tick(self.dance)
 
     def _detect(self, track=False):
         now = time.monotonic()

@@ -10,8 +10,9 @@ from .secrets import api_key
 CACHE = Path.home() / ".cache" / "riichi" / "speech"
 
 class Speaker:
-    def __init__(self, robot, config, errors):
+    def __init__(self, robot, config, errors, before_say=None):
         self.robot, self.config, self.errors = robot, config, errors
+        self.before_say = before_say
         self.lock = threading.Lock()
         self.busy = threading.Event()
         self.last_done = 0.0
@@ -21,6 +22,8 @@ class Speaker:
     def say(self, line, done=None):
         if self.stop.is_set():
             return
+        if self.before_say:
+            self.before_say()
         self.busy.set()
         def work():
             try:
