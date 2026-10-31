@@ -139,12 +139,7 @@ def greet(robot, center, width, height, path):
     if robot is None:
         play(path)
         return
-    from reachy_mini.utils import create_head_pose
-    # Small angles only; a low table needs a gentle upward tilt.
-    yaw = max(-18, min(18, (center[0] / width - 0.5) * 36))
-    pitch = max(-2, min(12, 7 + (0.5 - center[1] / height) * 10))
-    robot.goto_target(head=create_head_pose(yaw=yaw, pitch=pitch, degrees=True),
-                      antennas=[0.35, -0.35], duration=0.35)
+    robot.goto_target(antennas=[0.35, -0.35], duration=0.25, body_yaw=None)
     robot.goto_target(antennas=[-0.35, 0.35], duration=0.25)
     robot.goto_target(antennas=[0, 0], duration=0.25)
     robot.media.play_sound(str(path.resolve()))
@@ -152,8 +147,9 @@ def greet(robot, center, width, height, path):
 
 def main(stop_event=None, argv=None):
     parser = argparse.ArgumentParser(description="리치 체크인 환영 모드")
-    parser.add_argument("--camera", choices=("webcam", "robot"), default="webcam")
+    parser.add_argument("--camera", choices=("webcam", "robot"))
     parser.add_argument("--robot", action="store_true", help="로봇 머리·안테나·스피커 사용")
+    parser.add_argument("--no-track", action="store_true", help="사람을 향한 머리 추적 끄기")
     parser.add_argument("--host", help="로봇 호스트 이름 또는 IP (기본: 자동 검색)")
     parser.add_argument("--detector", choices=("person", "motion"), default="person")
     parser.add_argument("--region", type=parse_region, default=(0.0, 0.0, 1.0, 1.0), metavar="x1,y1,x2,y2")
@@ -162,6 +158,8 @@ def main(stop_event=None, argv=None):
     parser.add_argument("--preview", action="store_true", help="영역과 감지 박스를 화면에 표시")
     parser.add_argument("--max-seconds", type=float, help="테스트용 실행 제한")
     args = parser.parse_args(argv)
+    if args.camera is None:
+        args.camera = "robot" if args.robot else "webcam"
     if not 0 <= args.sensitivity <= 1 or args.cooldown < 0 or (args.max_seconds is not None and args.max_seconds <= 0):
         parser.error("sensitivity는 0~1, cooldown은 0 이상, max-seconds는 0 초과여야 합니다.")
 
@@ -194,6 +192,13 @@ def main(stop_event=None, argv=None):
             connection = nullcontext(None)
         with connection as mini:
             connected = True
+            gaze = None
+            if args.robot:
+                from person_gaze import PersonGaze, neutral
+                if args.camera == "robot" and args.detector == "person" and not args.no_track:
+                    gaze = PersonGaze(mini, log=True)
+                else:
+                    neutral(mini)
             cap = None
             if args.camera == "webcam":
                 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW) if sys.platform == "win32" else cv2.VideoCapture(0)
@@ -225,6 +230,8 @@ def main(stop_event=None, argv=None):
                         center = approach.update(boxes, time.monotonic(), width, height)
                     else:
                         center, boxes = motion.update(frame, region)
+                    if gaze:
+                        gaze.update(boxes, width, height)
                     now = time.monotonic()
                     if center and now - last_greeting >= args.cooldown:
                         choices = [entry for entry in entries if entry[0] != last_line]

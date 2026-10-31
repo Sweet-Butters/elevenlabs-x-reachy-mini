@@ -102,6 +102,8 @@ class Controller:
         self.listener = None
         self.welcome_stop = None
         self.welcome_thread = None
+        self.gaze_stop = None
+        self.gaze_thread = None
         self.state = "ready"
         self.number = 1
         self.lang = "ko"
@@ -228,6 +230,10 @@ class Controller:
             return
         if self.mode == "conversation":
             self.disconnect()
+        if self.gaze_stop:
+            self.gaze_stop.set()
+            self.gaze_thread.join(timeout=5)
+            self.gaze_stop = self.gaze_thread = None
         if self.listener:
             self.listener.close()
             self.listener = None
@@ -239,8 +245,26 @@ class Controller:
         print(f"\n========== 리치 모드: {target.upper()} ==========" , flush=True)
         print("F1 대화 · F2 타이머 · F3 환영 | 타이머: Enter 시작, p 정지, r 초기화, k/e 언어, n 길이, q 종료", flush=True)
         if target == "conversation":
+            if self.args.robot and not self.args.no_track:
+                self.gaze_stop = threading.Event()
+                self.gaze_thread = threading.Thread(target=self.run_gaze, daemon=True)
+                self.gaze_thread.start()
+            elif self.args.robot:
+                from person_gaze import neutral
+                from reachy_mini import ReachyMini
+                from robot_host import resolve_robot_host
+                host, _ = resolve_robot_host(self.args.host)
+                with ReachyMini(host=host, connection_mode="network", media_backend="default", timeout=15) as robot:
+                    neutral(robot)
             self.connect()
         else:
+            if target == "timer" and self.args.robot:
+                from person_gaze import neutral
+                from reachy_mini import ReachyMini
+                from robot_host import resolve_robot_host
+                host, _ = resolve_robot_host(self.args.host)
+                with ReachyMini(host=host, connection_mode="network", media_backend="default", timeout=15) as robot:
+                    neutral(robot)
             if not self.args.text:
                 self.listener = ScribeListener(self.events)
                 self.listener.start()
@@ -253,12 +277,36 @@ class Controller:
                 welcome_args = ["--camera", self.args.camera, "--detector", self.args.detector]
                 if self.args.robot:
                     welcome_args.append("--robot")
+                if self.args.no_track:
+                    welcome_args.append("--no-track")
                 if self.args.host:
                     welcome_args.extend(("--host", self.args.host))
                 if self.args.preview:
                     welcome_args.append("--preview")
                 self.welcome_thread = threading.Thread(target=self.run_welcome, args=(welcome_mode, welcome_args), daemon=True)
                 self.welcome_thread.start()
+
+    def run_gaze(self):
+        try:
+            import cv2
+            from reachy_mini import ReachyMini
+            from person_gaze import PersonGaze
+            from robot_host import resolve_robot_host
+            from welcome_mode import PersonDetector
+            host, _ = resolve_robot_host(self.args.host)
+            with ReachyMini(host=host, connection_mode="network", media_backend="default", timeout=15) as robot:
+                detector = PersonDetector(cv2)
+                gaze = PersonGaze(robot, log=True)
+                print("대화 모드 사람 추적 시작", flush=True)
+                while not self.gaze_stop.is_set():
+                    start = time.monotonic()
+                    frame = robot.media.get_frame()
+                    if frame is not None:
+                        height, width = frame.shape[:2]
+                        gaze.update(detector.detect(frame), width, height)
+                    self.gaze_stop.wait(max(0, 0.25 - (time.monotonic() - start)))
+        except Exception as exc:
+            self.events.put(("error", f"사람 추적: {exc}"))
 
     def run_welcome(self, module, argv):
         try:
@@ -384,9 +432,12 @@ class Controller:
 
     def run(self):
         threading.Thread(target=self.keyboard, daemon=True).start()
-        self.switch(self.args.mode)
+        started = time.monotonic()
         try:
+            self.switch(self.args.mode)
             while True:
+                if self.args.max_seconds and time.monotonic() - started >= self.args.max_seconds:
+                    break
                 self.tick()
                 try:
                     kind, value = self.events.get(timeout=0.1)
@@ -396,6 +447,9 @@ class Controller:
                     break
         finally:
             self.disconnect()
+            if self.gaze_stop:
+                self.gaze_stop.set()
+                self.gaze_thread.join(timeout=5)
             if self.listener:
                 self.listener.close()
             if self.welcome_stop:
@@ -410,14 +464,20 @@ def main():
     parser.add_argument("--seconds", type=int)
     parser.add_argument("--text", action="store_true", help="마이크 대신 터미널 문장으로 동작 검증")
     parser.add_argument("--offline", action="store_true", help="클립 누락 시 TTS 건너뜀")
-    parser.add_argument("--camera", choices=("webcam", "robot"), default="webcam")
+    parser.add_argument("--camera", choices=("webcam", "robot"))
     parser.add_argument("--detector", choices=("person", "motion"), default="person")
     parser.add_argument("--robot", action="store_true")
+    parser.add_argument("--no-track", action="store_true", help="대화·환영 모드 사람 추적 끄기")
+    parser.add_argument("--max-seconds", type=float, help="짧은 동작 확인 후 종료")
     parser.add_argument("--host", help="로봇 호스트 이름 또는 IP (기본: 자동 검색)")
     parser.add_argument("--preview", action="store_true")
     args = parser.parse_args()
+    if args.camera is None:
+        args.camera = "robot" if args.robot else "webcam"
     if not 1 <= (args.seconds if args.seconds is not None else args.minutes * 60) <= 3600:
         parser.error("길이는 1~3600초여야 합니다.")
+    if args.max_seconds is not None and args.max_seconds <= 0:
+        parser.error("--max-seconds는 0보다 커야 합니다.")
     Controller(args).run()
 
 
