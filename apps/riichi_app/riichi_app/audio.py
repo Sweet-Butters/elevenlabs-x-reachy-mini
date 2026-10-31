@@ -77,10 +77,14 @@ class ScribeListener:
 
     def close(self):
         self.stop.set()
-        try:
-            self.robot.media.stop_recording()
-        except Exception:
-            pass
+        def stop_recording():
+            try:
+                self.robot.media.stop_recording()
+            except Exception:
+                pass
+
+        # A blocked media call must not hold the app's shutdown path.
+        threading.Thread(target=stop_recording, daemon=True).start()
         self.thread.join(timeout=3)
 
     def run(self):

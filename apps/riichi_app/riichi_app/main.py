@@ -129,6 +129,21 @@ class RiichiApp(ReachyMiniApp):
         self.listener = ScribeListener(self.robot, self.events, self.config.get("stt_language", "auto"))
         self.listener.start()
 
+    def _close_session(self, session):
+        """Do not let a stalled ElevenLabs socket hold up app shutdown."""
+        def close():
+            try:
+                session.end_session()
+                session.wait_for_session_end()
+            except Exception as exc:
+                self._error("대화 종료: " + str(exc))
+
+        worker = threading.Thread(target=close, daemon=True)
+        worker.start()
+        worker.join(timeout=3)
+        if worker.is_alive():
+            self._error("대화 종료 시간 초과")
+
     def _switch(self, mode):
         if mode == self.mode and self.listener is not None:
             return
@@ -137,8 +152,7 @@ class RiichiApp(ReachyMiniApp):
             self.listener = None
         if self.session:
             session, self.session = self.session, None
-            session.end_session()
-            session.wait_for_session_end()
+            self._close_session(session)
         with self.lock:
             self.mode = mode
             if mode == "timer":
@@ -355,9 +369,8 @@ class RiichiApp(ReachyMiniApp):
                     self.listener.close()
                     self.listener = None
                 if self.session:
-                    self.session.end_session()
-                    self.session.wait_for_session_end()
-                    self.session = None
+                    session, self.session = self.session, None
+                    self._close_session(session)
             finally:
                 if self.speaker:
                     self.speaker.close()
