@@ -4,6 +4,7 @@ import math
 import queue
 import random
 import re
+import signal
 import threading
 import time
 from pathlib import Path
@@ -41,6 +42,7 @@ class RiichiApp(ReachyMiniApp):
         self.elapsed, self.resumed_at, self.timer_state, self.timer_number = 0.0, 0.0, "ready", 1
         self.fired = set()
         self.robot = self.speaker = self.listener = self.session = None
+        self.ready = False
         self.gate, self.initial_response_seen = WakeGate(5), False
         self.vision = self.gaze = self.approach = None
         self.next_detect = self.last_greeting = self.last_dance = 0.0
@@ -52,6 +54,9 @@ class RiichiApp(ReachyMiniApp):
     def _routes(self):
         @self.settings_app.get("/api/status")
         def status():
+            if not self.ready:
+                from fastapi import HTTPException
+                raise HTTPException(503, "로봇 연결 대기 중")
             with self.lock:
                 elapsed = self.elapsed + (time.monotonic() - self.resumed_at if self.timer_state == "running" else 0)
                 return {"mode": self.mode, "last_transcript": self.last_transcript,
@@ -62,6 +67,8 @@ class RiichiApp(ReachyMiniApp):
         @self.settings_app.post("/api/command")
         def command(item: Command):
             from fastapi import HTTPException
+            if not self.ready:
+                raise HTTPException(503, "로봇 연결 대기 중")
             if item.action not in ("welcome", "conversation", "timer", "start_next", "pause",
                                    "reset", "length", "dance", "volume", "test"):
                 raise HTTPException(400, "알 수 없는 명령")
@@ -318,6 +325,7 @@ class RiichiApp(ReachyMiniApp):
             self._error("볼륨 설정: " + str(exc))
         self._init_vision()
         self._switch("conversation")
+        self.ready = True
         try:
             while not stop_event.is_set():
                 try:
@@ -340,11 +348,19 @@ class RiichiApp(ReachyMiniApp):
                 elif self.mode == "timer":
                     self._tick_timer()
         finally:
-            if self.listener:
-                self.listener.close()
-            if self.session:
-                self.session.end_session()
-                self.session.wait_for_session_end()
+            self.ready = False
+            stop_event.set()
+            try:
+                if self.listener:
+                    self.listener.close()
+                    self.listener = None
+                if self.session:
+                    self.session.end_session()
+                    self.session.wait_for_session_end()
+                    self.session = None
+            finally:
+                if self.speaker:
+                    self.speaker.close()
 
     def _tick_conversation(self):
         now = time.monotonic()
@@ -386,6 +402,7 @@ class RiichiApp(ReachyMiniApp):
 
 if __name__ == "__main__":
     app = RiichiApp()
+    signal.signal(signal.SIGINT, lambda _signum, _frame: app.stop())
     try:
         app.wrapped_run()
     except KeyboardInterrupt:

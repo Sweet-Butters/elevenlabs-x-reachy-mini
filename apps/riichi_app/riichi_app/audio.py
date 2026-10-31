@@ -15,8 +15,12 @@ class Speaker:
         self.lock = threading.Lock()
         self.busy = threading.Event()
         self.last_done = 0.0
+        self.stop = threading.Event()
+        self.threads = set()
 
     def say(self, line, done=None):
+        if self.stop.is_set():
+            return
         self.busy.set()
         def work():
             try:
@@ -44,7 +48,7 @@ class Speaker:
                         duration = info.duration
                     except Exception:
                         duration = max(1, len(line.split()) / 2.5)
-                    time.sleep(max(0, min(30, duration + 0.2) - (time.monotonic() - started)))
+                    self.stop.wait(max(0, min(30, duration + 0.2) - (time.monotonic() - started)))
             except Exception as exc:
                 self.errors.put("음성 재생: " + str(exc))
             finally:
@@ -52,7 +56,15 @@ class Speaker:
                 self.busy.clear()
                 if done:
                     done()
-        threading.Thread(target=work, daemon=True).start()
+                self.threads.discard(threading.current_thread())
+        worker = threading.Thread(target=work, daemon=True)
+        self.threads.add(worker)
+        worker.start()
+
+    def close(self):
+        self.stop.set()
+        for worker in list(self.threads):
+            worker.join(timeout=3)
 
 class ScribeListener:
     def __init__(self, robot, events, language):
@@ -65,6 +77,10 @@ class ScribeListener:
 
     def close(self):
         self.stop.set()
+        try:
+            self.robot.media.stop_recording()
+        except Exception:
+            pass
         self.thread.join(timeout=3)
 
     def run(self):
@@ -98,28 +114,32 @@ class ScribeListener:
                             self.events.put(("error", "STT 전송: " + str(exc)))
                 sender = threading.Thread(target=send, daemon=True)
                 sender.start()
-                while not self.stop.is_set():
-                    try:
-                        data = json.loads(ws.recv(timeout=0.5))
-                    except TimeoutError:
-                        if pending and time.monotonic() - pending[1] >= 0.5:
-                            spoken = pending[0]
+                try:
+                    while not self.stop.is_set():
+                        try:
+                            data = json.loads(ws.recv(timeout=0.5))
+                        except TimeoutError:
+                            if pending and time.monotonic() - pending[1] >= 0.5:
+                                spoken = pending[0]
+                                if spoken != last_text or time.monotonic() - last_at > 2:
+                                    self.events.put(("transcript", {"text": spoken, "language_code": None}))
+                                    last_text, last_at = spoken, time.monotonic()
+                                pending = None
+                            continue
+                        if data.get("message_type") == "committed_transcript" and data.get("text"):
+                            pending = (data["text"], time.monotonic())
+                        elif data.get("message_type") == "committed_transcript_with_timestamps" and data.get("text"):
+                            spoken = data["text"]
                             if spoken != last_text or time.monotonic() - last_at > 2:
-                                self.events.put(("transcript", {"text": spoken, "language_code": None}))
+                                self.events.put(("transcript", {"text": spoken, "language_code": data.get("language_code")}))
                                 last_text, last_at = spoken, time.monotonic()
                             pending = None
-                        continue
-                    if data.get("message_type") == "committed_transcript" and data.get("text"):
-                        pending = (data["text"], time.monotonic())
-                    elif data.get("message_type") == "committed_transcript_with_timestamps" and data.get("text"):
-                        spoken = data["text"]
-                        if spoken != last_text or time.monotonic() - last_at > 2:
-                            self.events.put(("transcript", {"text": spoken, "language_code": data.get("language_code")}))
-                            last_text, last_at = spoken, time.monotonic()
-                        pending = None
-                    elif data.get("message_type") in ("error", "rate_limited"):
-                        self.events.put(("error", "STT: " + str(data.get("message") or data.get("error"))))
-                        break
+                        elif data.get("message_type") in ("error", "rate_limited"):
+                            self.events.put(("error", "STT: " + str(data.get("message") or data.get("error"))))
+                            break
+                finally:
+                    self.stop.set()
+                    sender.join(timeout=3)
         except Exception as exc:
             if not self.stop.is_set():
                 self.events.put(("error", "STT 연결: " + str(exc)))
