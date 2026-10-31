@@ -355,6 +355,8 @@ class Controller:
                     welcome_args.append("--no-track")
                 if self.args.no_body:
                     welcome_args.append("--no-body")
+                if self.args.no_dance:
+                    welcome_args.append("--no-dance")
                 if self.args.host:
                     welcome_args.extend(("--host", self.args.host))
                 if self.args.preview:
@@ -377,9 +379,42 @@ class Controller:
             gaze = PersonGaze(self.robot, log=True, body=not self.args.no_body) if not self.args.no_track else None
             wave_target = None
             wave_target_until = 0.0
+            # 말하지 않는 동안에는 춤추고, 대답하는 동안과 직후 몇 초는 멈춰서 사람을 본다
+            dances, dance_thread, last_talk = None, None, 0.0
+            if not self.args.no_dance:
+                try:
+                    import random
+                    from reachy_mini.motion.recorded_move import RecordedMoves
+                    dances = RecordedMoves("pollen-robotics/reachy-mini-dances-library")
+                except Exception as exc:
+                    print(f"춤 라이브러리 없음: {exc}", flush=True)
+            idle_dances = ("side_to_side_sway", "groovy_sway_and_roll", "yeah_nod", "uh_huh_tilt",
+                           "head_tilt_roll", "pendulum_swing", "chin_lead", "simple_nod")
+            robot = self.robot
+
+            def dance_once(name, yaw):
+                robot.play_move(dances.get(name), initial_goto_duration=0.4, sound=False)
+                robot.goto_target(body_yaw=yaw, duration=0.7)
+                robot.goto_target(body_yaw=-yaw, duration=0.9)
+                robot.goto_target(body_yaw=0.0, duration=0.6)
+
             print("대화 모드 사람 추적" + ("/손인사 감지" if pose else "") + " 시작", flush=True)
             while not self.gaze_stop.is_set():
                 start = time.monotonic()
+                now = time.monotonic()
+                talking = (self.audio_sink and self.audio_sink.busy.is_set()) or self.wave_busy.is_set()
+                if talking:
+                    last_talk = now
+                dancing = dance_thread is not None and dance_thread.is_alive()
+                if dances and not dancing and not talking and now - last_talk > 5.0:
+                    dance_thread = threading.Thread(
+                        target=dance_once, args=(random.choice(idle_dances), random.choice((-1, 1)) * 0.45),
+                        daemon=True)
+                    dance_thread.start()
+                    dancing = True
+                if dancing:
+                    self.gaze_stop.wait(0.25)
+                    continue
                 frame = self.robot.media.get_frame()
                 if frame is not None:
                     height, width = frame.shape[:2]
@@ -621,6 +656,7 @@ def main():
     parser.add_argument("--robot", action="store_true")
     parser.add_argument("--no-track", action="store_true", help="대화·환영 모드 사람 추적 끄기")
     parser.add_argument("--no-body", action="store_true", help="사람 추적 중 몸통 회전 끄기")
+    parser.add_argument("--no-dance", action="store_true", help="대화 모드에서 말하지 않을 때 춤추기 끄기")
     parser.add_argument("--max-seconds", type=float, help="짧은 동작 확인 후 종료")
     parser.add_argument("--host", help="로봇 호스트 이름 또는 IP (기본: 자동 검색)")
     parser.add_argument("--preview", action="store_true")
