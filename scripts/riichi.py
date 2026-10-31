@@ -61,6 +61,7 @@ class ScribeListener:
                 import numpy as np
                 if self.robot.media.get_input_audio_samplerate() != 16000:
                     raise RuntimeError("로봇 마이크 16 kHz 필요")
+                self.robot.media.start_recording()
                 print("STT 입력: 로봇 마이크", flush=True)
             else:
                 import pyaudio
@@ -106,6 +107,11 @@ class ScribeListener:
             self.events.put(("error", f"STT 연결: {exc}"))
         finally:
             self.stop.set()
+            if self.robot:
+                try:
+                    self.robot.media.stop_recording()
+                except Exception:
+                    pass
             if stream:
                 stream.stop_stream()
                 stream.close()
