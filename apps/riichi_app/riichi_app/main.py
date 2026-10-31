@@ -35,7 +35,7 @@ class RiichiApp(ReachyMiniApp):
         self.config = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
         self.events, self.errors = queue.Queue(), queue.Queue()
         self.lock = threading.RLock()
-        self.mode, self.last_transcript, self.last_error = "welcome", "", ""
+        self.mode, self.last_transcript, self.last_error = "conversation", "", ""
         self.tracking, self.dance = "준비 중", True
         self.length = self.current_length = int(self.config.get("timer_seconds", 300))
         self.elapsed, self.resumed_at, self.timer_state, self.timer_number = 0.0, 0.0, "ready", 1
@@ -119,7 +119,7 @@ class RiichiApp(ReachyMiniApp):
                                     requires_auth=True, client_tools=tools, config=config,
                                     callback_agent_response=response)
         self.session.start_session()
-        self.listener = ScribeListener(self.robot, self.events, self.config["language"])
+        self.listener = ScribeListener(self.robot, self.events, self.config.get("stt_language", "auto"))
         self.listener.start()
 
     def _switch(self, mode):
@@ -244,7 +244,17 @@ class RiichiApp(ReachyMiniApp):
         if self.mode == "conversation":
             if not value.strip() or self.speaker.busy.is_set() or time.monotonic() - self.last_turn < 2.0:
                 return
-            decision, message = self.gate.decide(value)
+            explicit_wake = re.search(r"(?:hey\s+reachy|리\s*치\s*야)", value, re.I)
+            english = language == "en" or (language not in ("ko", "en") and
+                len(re.findall(r"[A-Za-z]+", value)) >= 3 and not re.search(r"[가-힣]", value))
+            if english and not explicit_wake:
+                words = re.findall(r"[A-Za-z]+", value)
+                if (len(words) < 3 or len(set(word.lower() for word in words)) <= 1
+                        or value.strip().lower() in ("thank you very much", "one two three")):
+                    return
+                decision, message = "send", value.strip()
+            else:
+                decision, message = self.gate.decide(value)
             if decision == "ack":
                 self.speaker.say("네, 말씀해 주세요.")
             elif decision == "send" and self.session:
@@ -259,7 +269,7 @@ class RiichiApp(ReachyMiniApp):
                     self.last_turn = time.monotonic()
                     self.speaker.busy.set()
                     try:
-                        response_language = "English" if language == "en" or (language is None and self.config["language"] == "en") else "Korean"
+                        response_language = "English" if english or language == "en" else "Korean"
                         self.session.send_contextual_update(f"The current visitor used {response_language}. Reply in {response_language}. Keep the reply concise.")
                     except Exception:
                         pass
@@ -307,7 +317,7 @@ class RiichiApp(ReachyMiniApp):
         except Exception as exc:
             self._error("볼륨 설정: " + str(exc))
         self._init_vision()
-        self._switch("welcome")
+        self._switch("conversation")
         try:
             while not stop_event.is_set():
                 try:

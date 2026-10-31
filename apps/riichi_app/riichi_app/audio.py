@@ -72,12 +72,13 @@ class ScribeListener:
         import numpy as np
         recorded = False
         last_text, last_at = "", 0.0
+        pending = None
         try:
             if self.robot.media.get_input_audio_samplerate() != 16000:
                 raise RuntimeError("로봇 마이크는 16 kHz여야 합니다")
             self.robot.media.start_recording()
             recorded = True
-            url = "wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=scribe_v2_realtime&audio_format=pcm_16000&commit_strategy=vad"
+            url = "wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=scribe_v2_realtime&audio_format=pcm_16000&commit_strategy=vad&include_language_detection=true"
             if self.language in ("ko", "en"):
                 url += "&language_code=" + self.language
             with connect(url, additional_headers={"xi-api-key": api_key()}, open_timeout=10, close_timeout=2) as ws:
@@ -101,12 +102,21 @@ class ScribeListener:
                     try:
                         data = json.loads(ws.recv(timeout=0.5))
                     except TimeoutError:
+                        if pending and time.monotonic() - pending[1] >= 0.5:
+                            spoken = pending[0]
+                            if spoken != last_text or time.monotonic() - last_at > 2:
+                                self.events.put(("transcript", {"text": spoken, "language_code": None}))
+                                last_text, last_at = spoken, time.monotonic()
+                            pending = None
                         continue
-                    if data.get("message_type") in ("committed_transcript", "committed_transcript_with_timestamps") and data.get("text"):
+                    if data.get("message_type") == "committed_transcript" and data.get("text"):
+                        pending = (data["text"], time.monotonic())
+                    elif data.get("message_type") == "committed_transcript_with_timestamps" and data.get("text"):
                         spoken = data["text"]
                         if spoken != last_text or time.monotonic() - last_at > 2:
                             self.events.put(("transcript", {"text": spoken, "language_code": data.get("language_code")}))
                             last_text, last_at = spoken, time.monotonic()
+                        pending = None
                     elif data.get("message_type") in ("error", "rate_limited"):
                         self.events.put(("error", "STT: " + str(data.get("message") or data.get("error"))))
                         break

@@ -2,6 +2,7 @@
   "agent_id": "agent_9101m65rk0eqe2ytcq56ceg7hw10",
   "voice_id": "vJ170fCwESgE1tjW39So",
   "language": "ko",
+  "stt_language": "auto",
   "greetings": [
     "어서 오세요! 저는 리치예요. Hello World AI 해커톤에 오신 걸 환영해요!",
     "반가워요! 먼저 명찰을 받고 편한 자리에 앉아 주세요.",
