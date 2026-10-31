@@ -114,12 +114,19 @@ class Controller:
         self.last_display = ""
         self.voice_id = None
         self.session_epoch = 0
+        self.robot = None
 
     def speak(self, kind, seconds=0, lang=None):
         from play_lines import play
         lang = lang or self.active_lang
         file = path(kind, seconds, lang)
         if file.is_file() and file.stat().st_size:
+            if self.robot:
+                try:
+                    self.robot.media.play_sound(str(file.resolve()))
+                    return
+                except Exception as exc:
+                    print(f"로봇 재생 실패: {exc}", flush=True)
             try:
                 play(file)
                 return
@@ -228,6 +235,9 @@ class Controller:
     def switch(self, target):
         if target == self.mode:
             return
+        if self.robot:
+            self.robot.__exit__(None, None, None)
+            self.robot = None
         if self.mode == "conversation":
             self.disconnect()
         if self.gaze_stop:
@@ -263,8 +273,8 @@ class Controller:
                 from reachy_mini import ReachyMini
                 from robot_host import resolve_robot_host
                 host, _ = resolve_robot_host(self.args.host)
-                with ReachyMini(host=host, connection_mode="network", media_backend="default", timeout=15) as robot:
-                    neutral(robot)
+                self.robot = ReachyMini(host=host, connection_mode="network", media_backend="default", timeout=15)
+                neutral(self.robot)
             if not self.args.text:
                 self.listener = ScribeListener(self.events)
                 self.listener.start()
@@ -449,6 +459,9 @@ class Controller:
                     break
         finally:
             self.disconnect()
+            if self.robot:
+                self.robot.__exit__(None, None, None)
+                self.robot = None
             if self.gaze_stop:
                 self.gaze_stop.set()
                 self.gaze_thread.join(timeout=5)
