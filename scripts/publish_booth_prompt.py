@@ -17,7 +17,7 @@ def main():
     client.conversational_ai.agents.update(
         agent_id, branch_id=before.main_branch_id,
         conversation_config={"agent": {"prompt": {"prompt": prompt}}},
-        version_description="Make fixed booth facts explicit for short RAG answers")
+        version_description="General-purpose companion, booth facts kept")
     after = client.conversational_ai.agents.get(agent_id)
     assert after.conversation_config.agent.prompt.prompt.strip() == prompt
     assert after.conversation_config.agent.prompt.knowledge_base == before.conversation_config.agent.prompt.knowledge_base
