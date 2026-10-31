@@ -151,6 +151,7 @@ def main(stop_event=None, argv=None):
     parser.add_argument("--robot", action="store_true", help="로봇 머리·안테나·스피커 사용")
     parser.add_argument("--no-track", action="store_true", help="사람을 향한 머리 추적 끄기")
     parser.add_argument("--no-body", action="store_true", help="사람 추적 중 몸통 회전 끄기")
+    parser.add_argument("--no-dance", action="store_true", help="사람이 없을 때 춤추기 끄기")
     parser.add_argument("--host", help="로봇 호스트 이름 또는 IP (기본: 자동 검색)")
     parser.add_argument("--detector", choices=("person", "motion"), default="person")
     parser.add_argument("--region", type=parse_region, default=(0.0, 0.0, 1.0, 1.0), metavar="x1,y1,x2,y2")
@@ -227,6 +228,17 @@ def main(stop_event=None, argv=None):
             wave_target = None
             wave_target_until = 0.0
             frames = 0
+            # 사람이 없을 때 짧은 춤(약 2초짜리)을 이어서 춘다. 춤이 끝나야 인사·추적을 재개한다.
+            dances, dance_thread, last_person = None, None, time.monotonic()
+            if args.robot and not args.no_dance:
+                try:
+                    import threading
+                    from reachy_mini.motion.recorded_move import RecordedMoves
+                    dances = RecordedMoves("pollen-robotics/reachy-mini-dances-library")
+                except Exception as exc:
+                    print(f"춤 라이브러리 없음: {exc}", flush=True)
+            idle_dances = ("side_to_side_sway", "groovy_sway_and_roll", "yeah_nod", "uh_huh_tilt",
+                           "head_tilt_roll", "pendulum_swing", "chin_lead", "simple_nod")
             try:
                 while (not stop_event or not stop_event.is_set()) and (args.max_seconds is None or time.monotonic() - start < args.max_seconds):
                     ok, frame = cap.read() if cap else (True, mini.media.get_frame())
@@ -255,6 +267,24 @@ def main(stop_event=None, argv=None):
                         wave_file = ROOT / "audio" / "wave" / f"0{last_wave_line}.mp3"
                         greet(mini if args.robot else None, None, width, height, wave_file)
                         last_greeting = now
+                    if boxes:
+                        last_person = now
+                    dancing = dance_thread is not None and dance_thread.is_alive()
+                    if dances and not dancing and not boxes and now - last_person > 3.0:
+                        name = random.choice(idle_dances)
+                        swing = random.choice((-1, 1)) * 0.45  # 공식 춤은 몸통을 안 쓰므로 춤 사이에 몸통을 좌우로 흔든다
+
+                        def dance_once(n=name, yaw=swing):
+                            mini.play_move(dances.get(n), initial_goto_duration=0.4, sound=False)
+                            mini.goto_target(body_yaw=yaw, duration=0.7)
+                            mini.goto_target(body_yaw=-yaw, duration=0.9)
+                            mini.goto_target(body_yaw=0.0, duration=0.6)
+
+                        dance_thread = threading.Thread(target=dance_once, daemon=True)
+                        dance_thread.start()
+                        dancing = True
+                    if dancing:
+                        continue
                     if gaze:
                         if wave_target and boxes and now < wave_target_until:
                             cx = (wave_target[0]+wave_target[2])/2
