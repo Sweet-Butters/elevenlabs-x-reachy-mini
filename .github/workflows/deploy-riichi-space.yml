@@ -1,0 +1,28 @@
+name: Deploy riichi_app to Hugging Face Space
+
+# apps/riichi_app 이 바뀌면 로봇이 설치하는 Space(Sweetbutters/riichi_app)로 그대로 올린다
+on:
+  push:
+    branches: [Sweet-Butters/robot-app, main]
+    paths: ["apps/riichi_app/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: riichi-space
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "huggingface_hub>=1.0"
+      - name: Upload to Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          hf upload Sweetbutters/riichi_app apps/riichi_app . --repo-type space \
+            --commit-message "Deploy ${GITHUB_SHA::7} from GitHub"

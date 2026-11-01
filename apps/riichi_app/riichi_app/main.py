@@ -42,7 +42,7 @@ class RiichiApp(ReachyMiniApp):
         self.elapsed, self.resumed_at, self.timer_state, self.timer_number = 0.0, 0.0, "ready", 1
         self.fired = set()
         self.robot = self.speaker = self.listener = self.session = self.motion = None
-        self.ready = False
+        self.ready = self.asleep = False
         self.gate, self.initial_response_seen = WakeGate(5), False
         self.vision = self.gaze = self.approach = None
         self.next_detect = self.last_greeting = 0.0
@@ -70,7 +70,7 @@ class RiichiApp(ReachyMiniApp):
             if not self.ready:
                 raise HTTPException(503, "로봇 연결 대기 중")
             if item.action not in ("welcome", "conversation", "timer", "start_next", "pause",
-                                   "reset", "length", "dance", "volume", "test"):
+                                   "reset", "length", "dance", "volume", "test", "sleep", "wake"):
                 raise HTTPException(400, "알 수 없는 명령")
             if item.action in ("length", "volume"):
                 low, high = (1, 3600) if item.action == "length" else (0, 100)
@@ -329,6 +329,16 @@ class RiichiApp(ReachyMiniApp):
                 pass
         elif action == "test":
             self.speaker.say("Hi! I'm Reachy. Can you hear me? 안녕하세요, 리치 목소리 들리세요?")
+        elif action == "sleep":
+            # 전원을 끄기 전에 머리를 내려 두는 용도. 앱은 계속 돌고, 깨우기로 다시 시작한다
+            self.asleep = True
+            self.motion.pause()
+            self.robot.goto_sleep()
+        elif action == "wake":
+            self.robot.enable_motors()
+            self.robot.wake_up()
+            self.asleep = False
+            self.last_greeting = 0.0
         elif action == "transcript":
             self._transcript(value)
         elif action == "error":
@@ -368,6 +378,8 @@ class RiichiApp(ReachyMiniApp):
                         self._error(action + ": " + str(exc))
                 except queue.Empty:
                     pass
+                if self.asleep:
+                    continue
                 if self.mode == "welcome":
                     self._tick_welcome()
                 elif self.mode == "conversation":
