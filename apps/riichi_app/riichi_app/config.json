@@ -1,15 +1,19 @@
 {
   "agent_id": "agent_9101m69gkj8pewyt1vtpvs3yrf45",
-  "voice_id": "EXAVITQu4vr4xnSDxMaL",
+  "voice_id": "FGY2WhTYpPnrIDTdsKH5",
   "language": "en",
   "stt_language": "auto",
   "greetings": [
-    "Hi! I'm Reachy. Want to smell a forest? Pick a scent for your postcard! 안녕하세요, 리치예요. 향을 맡아 보세요!",
-    "Welcome to TripPups! Try hinoki cypress, pine, or moss for free. 트립펍스에서 무료로 시향해 보세요!",
-    "Hello from Reachy! Choose a forest scent and take it home on a postcard. 안녕하세요! 엽서에 담을 숲 향을 골라 보세요!",
-    "Hi there! Curious about our scent postcards? Come sniff the forest. 향기 엽서를 구경하고 시향해 보세요!"
+    "Welcome to the TripPups booth!",
+    "Come join the event, and take a free scent sample!",
+    "Smell the forest! Hinoki, pine, or moss. Try it for free!",
+    "Check out our merch! Scent postcards, perfume, and keyrings!",
+    "Happy Halloween! Come say hi to TripPups!",
+    "Pick your favorite forest scent and take it home on a postcard!",
+    "트립펍스 부스에 오신 걸 환영해요! 무료로 시향해 보세요!"
   ],
   "detection_fps": 2,
-  "fallback_greeting_seconds": 90,
-  "timer_seconds": 300
+  "fallback_greeting_seconds": 25,
+  "timer_seconds": 300,
+  "start_mode": "welcome"
 }

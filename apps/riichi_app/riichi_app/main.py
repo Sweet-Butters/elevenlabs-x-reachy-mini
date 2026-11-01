@@ -351,7 +351,7 @@ class RiichiApp(ReachyMiniApp):
         except Exception as exc:
             self._error("볼륨 설정: " + str(exc))
         self._init_vision()
-        self._switch("conversation")
+        self._switch(self.config.get("start_mode", "conversation"))
         self.ready = True
         try:
             while not stop_event.is_set():
