@@ -1,6 +1,5 @@
 {
   "agent_id": "agent_9101m69gkj8pewyt1vtpvs3yrf45",
-  "voice_id": "FGY2WhTYpPnrIDTdsKH5",
   "language": "en",
   "stt_language": "auto",
   "greetings": [
@@ -15,7 +14,6 @@
   "timer_seconds": 300,
   "start_mode": "welcome",
   "voice_ids": [
-    "FGY2WhTYpPnrIDTdsKH5",
     "hpp4J3VqNfWAUOO0d1Us",
     "cgSgspJ2msm6clMCkdW9"
   ]
