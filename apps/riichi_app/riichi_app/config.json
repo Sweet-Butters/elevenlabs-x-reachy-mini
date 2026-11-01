@@ -8,12 +8,15 @@
     "Come join the event, and take a free scent sample!",
     "Smell the forest! Hinoki, pine, or moss. Try it for free!",
     "Check out our merch! Scent postcards, perfume, and keyrings!",
-    "Happy Halloween! Come say hi to TripPups!",
-    "Pick your favorite forest scent and take it home on a postcard!",
     "트립펍스 부스에 오신 걸 환영해요! 무료로 시향해 보세요!"
   ],
   "detection_fps": 2,
   "fallback_greeting_seconds": 25,
   "timer_seconds": 300,
-  "start_mode": "welcome"
+  "start_mode": "welcome",
+  "voice_ids": [
+    "FGY2WhTYpPnrIDTdsKH5",
+    "hpp4J3VqNfWAUOO0d1Us",
+    "cgSgspJ2msm6clMCkdW9"
+  ]
 }

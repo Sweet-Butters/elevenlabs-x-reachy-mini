@@ -25,10 +25,14 @@ class Speaker:
         if self.before_say:
             self.before_say()
         self.busy.set()
+        # voice_ids가 있으면 대사마다 목소리를 돌려 가며 쓴다
+        voices = self.config.get("voice_ids") or [self.config["voice_id"]]
+        self.turn = getattr(self, "turn", -1) + 1
+        voice = voices[self.turn % len(voices)]
         def work():
             try:
                 with self.lock:
-                    digest = hashlib.sha256((self.config["voice_id"] + line).encode()).hexdigest()
+                    digest = hashlib.sha256((voice + line).encode()).hexdigest()
                     file = CACHE / (digest + ".mp3")
                     if not file.is_file() or not file.stat().st_size:
                         from elevenlabs.client import ElevenLabs
@@ -36,7 +40,7 @@ class Speaker:
                         tmp = file.with_suffix(".tmp")
                         with tmp.open("wb") as out:
                             for chunk in ElevenLabs(api_key=api_key()).text_to_speech.convert(
-                                text=line, voice_id=self.config["voice_id"],
+                                text=line, voice_id=voice,
                                 model_id="eleven_multilingual_v2", output_format="mp3_44100_128"):
                                 out.write(chunk)
                         if not tmp.stat().st_size:
